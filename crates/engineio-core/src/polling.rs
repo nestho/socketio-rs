@@ -205,7 +205,9 @@ pub async fn handle_polling_request(
             .body(Full::new(Bytes::from_static(
                 b"{\"code\":5,\"message\":\"Unsupported protocol version\"}",
             )))
-            .unwrap_or_else(|_| text_response(StatusCode::BAD_REQUEST, b"Unsupported protocol"));
+            .unwrap_or_else(|_| {
+                text_response(StatusCode::BAD_REQUEST, Bytes::from_static(b"Unsupported protocol"))
+            });
     }
 
     let sid_opt = extract_query_param(&query, "sid").map(str::to_owned);

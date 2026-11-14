@@ -385,6 +385,7 @@ impl Adapter for PostgresAdapter {
             origin_node: self.node_id.clone(),
             opts,
             payload_bytes: encoded_packet.to_vec(),
+            binary_attachments: Vec::new(),
         };
         let state = Arc::clone(&self.state);
         Box::pin(async move {
