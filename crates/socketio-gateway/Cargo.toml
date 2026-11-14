@@ -6,6 +6,12 @@ license.workspace = true
 description = "Standalone polyglot Socket.IO edge gateway binary"
 
 [dependencies]
+bytes.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+tokio.workspace = true
 engineio-core.workspace = true
 socketio-parser.workspace = true
 socketio-server.workspace = true

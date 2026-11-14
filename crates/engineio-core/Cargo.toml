@@ -3,11 +3,14 @@ name = "engineio-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Engine.IO v4 session FSM, adaptive IoDriver (io_uring/epoll/kqueue), HTTP long-polling, streaming maxPayload guard, and write watermarks"
+description = "Engine.IO v4 session FSM, adaptive IoDriver (io_uring/epoll/kqueue), HTTP long-polling, WebSocket upgrade FSM, streaming maxPayload guard, and write watermarks"
 
 [dependencies]
 bytes.workspace = true
+futures-util.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
+hyper-util.workspace = true
 tokio.workspace = true
+tokio-tungstenite.workspace = true

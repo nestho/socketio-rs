@@ -7,6 +7,7 @@
 
 pub mod driver;
 pub mod polling;
+pub mod ws;
 
 pub use driver::{
     detect_optimal_driver, AdaptiveDriver, DriverCapabilities, IoDriver, IoDriverKind,
@@ -16,6 +17,7 @@ pub use polling::{
     extract_query_param, generate_sid, handle_polling_request, PollingSession, SessionStore,
     ENGINEIO_RECORD_SEPARATOR,
 };
+pub use ws::{handle_websocket_upgrade, is_websocket_upgrade, UpgradeFsm};
 
 use std::fmt;
 

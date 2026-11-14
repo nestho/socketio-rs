@@ -17,11 +17,13 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 bytes = "1.7"
+futures-util = "0.3"
 http = "1.1"
 http-body-util = "0.1"
 hyper = { version = "1.4", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "http1", "http2"] }
 tokio = { version = "1.40", features = ["full"] }
+tokio-tungstenite = "0.26"
 engineio-core = { path = "crates/engineio-core" }
 socketio-parser = { path = "crates/socketio-parser" }
 socketio-server = { path = "crates/socketio-server" }
