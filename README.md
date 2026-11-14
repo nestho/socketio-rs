@@ -14,6 +14,8 @@ All foundational research, high-level design, roadmap, and developer migration s
    - [Markdown (`docs/03-Visionary-Development-and-Transformation-Plan.md`)](./docs/03-Visionary-Development-and-Transformation-Plan.md) | [PDF (`docs/03-Visionary-Development-and-Transformation-Plan.pdf`)](./docs/03-Visionary-Development-and-Transformation-Plan.pdf)
 4. **Developer Migration Guide & Automated Migration Assistant Spec**:
    - [Markdown (`docs/04-Developer-Migration-Guide-and-Assistant-Spec.md`)](./docs/04-Developer-Migration-Guide-and-Assistant-Spec.md) | [PDF (`docs/04-Developer-Migration-Guide-and-Assistant-Spec.pdf`)](./docs/04-Developer-Migration-Guide-and-Assistant-Spec.pdf)
+5. **Sprint Plan, Task Grouping & Engineering Backlog**:
+   - [Markdown (`docs/05-Sprint-Plan-and-Task-Breakdown.md`)](./docs/05-Sprint-Plan-and-Task-Breakdown.md)
 
 For developer setup, build commands, kernel tuning, and phase-by-phase workflow instructions, see [`INSTRUCTIONS.md`](./INSTRUCTIONS.md).
 
