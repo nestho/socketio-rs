@@ -17,3 +17,6 @@ tower.workspace = true
 engineio-core.workspace = true
 socketio-parser.workspace = true
 socketio-adapters.workspace = true
+
+[dev-dependencies]
+hyper-util.workspace = true
