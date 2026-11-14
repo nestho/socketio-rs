@@ -84,17 +84,17 @@ This sprint plan breaks down the redesign and port of [`socketio/socket.io`](htt
 ## Sprint 4: HTTP/3 WebTransport, `jemalloc` & Polyglot Gateway (Weeks 7–8)
 
 ### Group 4A: HTTP/3 WebTransport (`wtransport` / `quinn`)
-- [ ] **S4-T01** Integrate `wtransport` over `quinn` (UDP/QUIC) with `rustls` TLS 1.3 and UDP GSO/GRO batching.
-- [ ] **S4-T02** Implement Engine.IO WebTransport bidirectional stream transport (`upgrades: ["websocket", "webtransport"]`), enforcing single-stream-per-session and `validate_sid`.
+- [x] **S4-T01** Integrate `wtransport` over `quinn` (UDP/QUIC) with `rustls` TLS 1.3 and UDP GSO/GRO batching.
+- [x] **S4-T02** Implement Engine.IO WebTransport bidirectional stream transport (`upgrades: ["websocket", "webtransport"]`), enforcing single-stream-per-session and `validate_sid`.
 
 ### Group 4B: Standalone Polyglot Gateway (`socketio-gateway`)
-- [ ] **S4-T03** Implement `gateway.toml` configuration loader (server, engine, security, recovery, bridge sections).
-- [ ] **S4-T04** Build HTTP/gRPC Broadcast API (`127.0.0.1:3001/_broadcast`) + Upstream Event Webhook forwarder so Node.js/Python/Go apps can offload WebSockets with zero rewrite.
-- [ ] **S4-T05** Implement `SIGTERM` graceful slow-drain (`shutdown_drain_timeout_ms`) and `max_connection_duration_jitter_pct` to prevent reconnect avalanches.
+- [x] **S4-T03** Implement `gateway.toml` configuration loader (server, engine, security, recovery, bridge sections).
+- [x] **S4-T04** Build HTTP/gRPC Broadcast API (`127.0.0.1:3001/_broadcast`) + Upstream Event Webhook forwarder so Node.js/Python/Go apps can offload WebSockets with zero rewrite.
+- [x] **S4-T05** Implement `SIGTERM` graceful slow-drain (`shutdown_drain_timeout_ms`) and `max_connection_duration_jitter_pct` to prevent reconnect avalanches.
 
 ### Group 4C: Allocator & Observability
-- [ ] **S4-T06** Configure `tikv-jemallocator` (`#[global_allocator]`) on Linux builds with `MALLOC_CONF` background purge tuning.
-- [ ] **S4-T07** Expose Prometheus `/metrics` (active connections, RSS, p99 broadcast latency, dropped slow consumers) and OpenTelemetry `tracing` spans.
+- [x] **S4-T06** Configure `tikv-jemallocator` (`#[global_allocator]`) on Linux builds with `MALLOC_CONF` background purge tuning.
+- [x] **S4-T07** Expose Prometheus `/metrics` (active connections, RSS, p99 broadcast latency, dropped slow consumers) and OpenTelemetry `tracing` spans.
 
 ---
 
