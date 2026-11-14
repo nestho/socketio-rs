@@ -54,6 +54,48 @@ impl LivePostgresAdapter {
     pub fn notify_channel(&self) -> &str {
         &self.channel
     }
+
+    /// Spawns a background PostgreSQL `LISTEN` loop that forwards remote
+    /// `ClusterBroadcastPacket`s (skipping `origin_node == self.node_id`) to `handler`.
+    pub fn spawn_subscriber_loop(
+        &self,
+        handler: crate::adapter::ClusterPacketHandler,
+    ) -> tokio::task::JoinHandle<()> {
+        let conn_str = self.conn_str.clone();
+        let channel = self.channel.clone();
+        let local_node = self.node_id.clone();
+
+        tokio::spawn(async move {
+            let Ok((client, mut connection)) =
+                tokio_postgres::connect(&conn_str, tokio_postgres::NoTls).await
+            else {
+                return;
+            };
+            let listen_sql = format!("LISTEN \"{}\"", channel.replace('"', "\"\""));
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            tokio::spawn(async move {
+                let _ = futures_util::future::poll_fn(|cx| {
+                    while let std::task::Poll::Ready(Some(msg)) = connection.poll_message(cx)? {
+                        if let tokio_postgres::AsyncMessage::Notification(n) = msg {
+                            let _ = tx.send(n.payload().to_owned());
+                        }
+                    }
+                    std::task::Poll::Pending::<Result<(), tokio_postgres::Error>>
+                })
+                .await;
+            });
+            if client.batch_execute(&listen_sql).await.is_err() {
+                return;
+            }
+            while let Some(payload) = rx.recv().await {
+                if let Ok(pkt) = serde_json::from_str::<ClusterBroadcastPacket>(&payload) {
+                    if pkt.origin_node != local_node {
+                        handler(pkt);
+                    }
+                }
+            }
+        })
+    }
 }
 
 impl Adapter for LivePostgresAdapter {

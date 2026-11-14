@@ -66,11 +66,24 @@ pub trait IoDriver: Send + Sync {
         }
     }
 
-    /// Binds a non-blocking TCP listener for a specific worker shard.
+    /// Binds a non-blocking TCP listener for a specific worker shard with `SO_REUSEPORT` & `TCP_NODELAY`.
     fn bind_shard_listener(&self, _shard_id: usize, addr: SocketAddr) -> io::Result<TcpListener> {
-        let listener = TcpListener::bind(addr)?;
-        listener.set_nonblocking(true)?;
-        Ok(listener)
+        let domain = if addr.is_ipv4() {
+            socket2::Domain::IPV4
+        } else {
+            socket2::Domain::IPV6
+        };
+        let sock = socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?;
+        sock.set_reuse_address(true)?;
+        #[cfg(all(unix, not(target_os = "solaris"), not(target_os = "illumos")))]
+        if self.tuning().so_reuseport {
+            let _ = sock.set_reuse_port(true);
+        }
+        let _ = sock.set_nodelay(self.tuning().tcp_nodelay);
+        sock.set_nonblocking(true)?;
+        sock.bind(&addr.into())?;
+        sock.listen(1024)?;
+        Ok(sock.into())
     }
 }
 
