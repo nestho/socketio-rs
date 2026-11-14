@@ -149,9 +149,13 @@ async fn main() {
             );
         });
 
-        let edge_listener = TcpListener::bind(edge_addr)
-            .await
-            .expect("failed to bind edge TCP listener");
+        let shard_std_listeners = driver
+            .bind_all_shard_listeners(edge_addr)
+            .expect("failed to bind SO_REUSEPORT shard edge TCP listeners");
+        let edge_listeners: Vec<TcpListener> = shard_std_listeners
+            .into_iter()
+            .map(|l| TcpListener::from_std(l).expect("valid std TcpListener"))
+            .collect();
         let bridge_listener = TcpListener::bind(bridge_addr)
             .await
             .expect("failed to bind bridge TCP listener");
@@ -194,20 +198,51 @@ async fn main() {
         println!("  Edge Socket.IO Listening : http://{edge_addr}{mount_prefix}/");
         println!("  Control/Broadcast API    : http://{bridge_addr}/_broadcast");
 
-        if gw_cfg.recovery.adapter == "redis" {
-            let redis_url =
-                std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
-            if let Ok(redis_adapter) = socketio_adapters::LiveRedisStreamsAdapter::connect(
-                format!("gateway-{}", std::process::id()),
-                "sio:cluster:stream",
-                &redis_url,
-            ) {
+        match gw_cfg.recovery.adapter.as_str() {
+            "redis" => {
+                let redis_url = std::env::var("REDIS_URL")
+                    .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
+                if let Ok(redis_adapter) = socketio_adapters::LiveRedisStreamsAdapter::connect(
+                    format!("gateway-{}", std::process::id()),
+                    "sio:cluster:stream",
+                    &redis_url,
+                ) {
+                    let io_cluster = Arc::clone(&io);
+                    redis_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
+                        let _ = io_cluster.handle_cluster_packet(pkt);
+                    }));
+                    println!("  Redis Cluster Subscriber : active ({redis_url})");
+                }
+            }
+            "nats" => {
+                let nats_url = std::env::var("NATS_URL")
+                    .unwrap_or_else(|_| "nats://127.0.0.1:4222".to_owned());
+                let nats_adapter = socketio_adapters::LiveNatsJetStreamAdapter::new(
+                    format!("gateway-{}", std::process::id()),
+                    "sio.cluster",
+                    &nats_url,
+                );
                 let io_cluster = Arc::clone(&io);
-                redis_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
+                nats_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
                     let _ = io_cluster.handle_cluster_packet(pkt);
                 }));
-                println!("  Redis Cluster Subscriber : active ({redis_url})");
+                println!("  NATS Cluster Subscriber  : active ({nats_url})");
             }
+            "postgres" => {
+                let pg_url = std::env::var("DATABASE_URL")
+                    .unwrap_or_else(|_| "postgres://postgres@127.0.0.1:5432/app".to_owned());
+                let pg_adapter = socketio_adapters::LivePostgresAdapter::new(
+                    format!("gateway-{}", std::process::id()),
+                    "socketio_cluster",
+                    &pg_url,
+                );
+                let io_cluster = Arc::clone(&io);
+                pg_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
+                    let _ = io_cluster.handle_cluster_packet(pkt);
+                }));
+                println!("  Postgres LISTEN Sub      : active");
+            }
+            _ => {}
         }
 
         let io_bridge = Arc::clone(&io);
@@ -285,17 +320,20 @@ async fn main() {
         });
 
         let drain_ms = gw_cfg.server.shutdown_drain_timeout_ms;
-        tokio::select! {
-            _ = async {
+        for edge_listener in edge_listeners {
+            let store_shard = store.clone();
+            let bridge_shard = Arc::clone(&bridge);
+            let prefix_shard = mount_prefix.clone();
+            tokio::spawn(async move {
                 loop {
                     let Ok((stream, _peer)) = edge_listener.accept().await else {
                         continue;
                     };
                     let _ = stream.set_nodelay(true);
-                    let store_clone = store.clone();
+                    let store_clone = store_shard.clone();
                     let bridge_clone: Arc<dyn engineio_core::EngineHandler> =
-                        Arc::clone(&bridge) as Arc<dyn engineio_core::EngineHandler>;
-                    let prefix_outer = mount_prefix.clone();
+                        Arc::clone(&bridge_shard) as Arc<dyn engineio_core::EngineHandler>;
+                    let prefix_outer = prefix_shard.clone();
                     tokio::spawn(async move {
                         let svc = service_fn(move |req| {
                             let s = store_clone.clone();
@@ -334,11 +372,11 @@ async fn main() {
                             .await;
                     });
                 }
-            } => {}
-            _ = tokio::signal::ctrl_c() => {
-                println!("Shutdown signal received — draining connections for {drain_ms} ms...");
-                tokio::time::sleep(Duration::from_millis(drain_ms.min(500))).await;
-            }
+            });
         }
+
+        let _ = tokio::signal::ctrl_c().await;
+        println!("Shutdown signal received — draining connections for {drain_ms} ms...");
+        tokio::time::sleep(Duration::from_millis(drain_ms.min(500))).await;
     }
 }
