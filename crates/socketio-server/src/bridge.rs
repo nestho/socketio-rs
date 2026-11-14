@@ -20,6 +20,7 @@ use tokio::sync::mpsc;
 
 pub type EventCallback = Arc<dyn Fn(SocketRef, EventContext) + Send + Sync>;
 pub type AnyEventCallback = Arc<dyn Fn(SocketRef, &str, EventContext) + Send + Sync>;
+pub type AnyOutgoingCallback = Arc<dyn Fn(&str, &SharedBytes) + Send + Sync>;
 pub type DisconnectingCallback = Arc<dyn Fn(SocketRef, Vec<String>) + Send + Sync>;
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +52,7 @@ struct ActiveSession {
     sockets_by_ns: HashMap<String, SocketRef>,
     event_handlers: Arc<RwLock<HashMap<String, EventCallback>>>,
     on_any_handlers: Arc<RwLock<Vec<AnyEventCallback>>>,
+    on_any_outgoing_handlers: Arc<RwLock<Vec<AnyOutgoingCallback>>>,
     disconnecting_handlers: Arc<RwLock<Vec<DisconnectingCallback>>>,
     bin_reconstructor: Mutex<BinaryAttachmentReconstructor>,
 }
@@ -90,6 +92,17 @@ impl SocketIoEngineBridge {
         if let Ok(guard) = self.sessions.read() {
             if let Some(sess) = guard.get(sid) {
                 if let Ok(mut list) = sess.on_any_handlers.write() {
+                    list.push(cb);
+                }
+            }
+        }
+    }
+
+    /// Registers an outbound interceptor `socket.onAnyOutgoing((frame) => ...)`.
+    pub fn register_on_any_outgoing(&self, sid: &str, cb: AnyOutgoingCallback) {
+        if let Ok(guard) = self.sessions.read() {
+            if let Some(sess) = guard.get(sid) {
+                if let Ok(mut list) = sess.on_any_outgoing_handlers.write() {
                     list.push(cb);
                 }
             }
@@ -154,9 +167,18 @@ impl EngineHandler for SocketIoEngineBridge {
     fn on_open(&self, sid: &str, raw_outbound: mpsc::Sender<String>) {
         let (sock_tx, mut sock_rx) = mpsc::channel::<SharedBytes>(256);
         let raw_tx_clone = raw_outbound.clone();
+        let on_any_outgoing_handlers: Arc<RwLock<Vec<AnyOutgoingCallback>>> =
+            Arc::new(RwLock::new(Vec::new()));
+        let outgoing_hooks = Arc::clone(&on_any_outgoing_handlers);
+        let sid_owned = sid.to_owned();
 
         tokio::spawn(async move {
             while let Some(pkt) = sock_rx.recv().await {
+                if let Ok(hooks) = outgoing_hooks.read() {
+                    for hook in hooks.iter() {
+                        hook(&sid_owned, &pkt);
+                    }
+                }
                 if let Ok(s) = std::str::from_utf8(pkt.as_slice()) {
                     if raw_tx_clone.send(format!("4{s}")).await.is_err() {
                         break;
@@ -172,6 +194,7 @@ impl EngineHandler for SocketIoEngineBridge {
             sockets_by_ns: HashMap::new(),
             event_handlers: Arc::new(RwLock::new(HashMap::new())),
             on_any_handlers: Arc::new(RwLock::new(Vec::new())),
+            on_any_outgoing_handlers,
             disconnecting_handlers: Arc::new(RwLock::new(Vec::new())),
             bin_reconstructor: Mutex::new(BinaryAttachmentReconstructor::default()),
         };

@@ -9,6 +9,7 @@ description = "Engine.IO v4 session FSM, adaptive IoDriver (io_uring/epoll/kqueu
 v4 = []
 
 [dependencies]
+base64 = "0.22"
 bytes.workspace = true
 futures-util.workspace = true
 http.workspace = true

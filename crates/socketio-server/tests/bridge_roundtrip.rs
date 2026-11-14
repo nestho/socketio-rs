@@ -144,3 +144,40 @@ async fn live_on_any_and_disconnecting_hooks_observe_events_and_rooms() {
     assert_eq!(*observed_rooms.lock().unwrap(), vec!["lobby".to_owned()]);
     assert_eq!(io.rooms.active_room_count(), 0);
 }
+
+#[tokio::test]
+async fn live_on_any_outgoing_observes_emitted_frames() {
+    use std::sync::Mutex;
+
+    let io = Arc::new(SocketIo::new(4));
+    let bridge = SocketIoEngineBridge::new(Arc::clone(&io));
+    let b_ns = Arc::clone(&bridge);
+    let outbound_frames: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let out_c = Arc::clone(&outbound_frames);
+
+    io.ns("/", move |socket| {
+        let o = Arc::clone(&out_c);
+        b_ns.register_on_any_outgoing(
+            &socket.id,
+            Arc::new(move |_sid, pkt| {
+                if let Ok(s) = std::str::from_utf8(pkt.as_slice()) {
+                    o.lock().unwrap().push(s.to_owned());
+                }
+            }),
+        );
+        socket.emit("welcome", &"hi");
+    });
+
+    let (tx, mut rx) = mpsc::channel::<String>(16);
+    let sid = "FSDjX-WRwSA4zTZMALq8";
+    bridge.on_open(sid, tx);
+    bridge.on_message(sid, "0");
+
+    let _connect_ack = rx.recv().await.unwrap();
+    let welcome = rx.recv().await.unwrap();
+    assert_eq!(welcome, "42[\"welcome\",\"hi\"]");
+    assert_eq!(
+        *outbound_frames.lock().unwrap(),
+        vec!["2[\"welcome\",\"hi\"]".to_owned()]
+    );
+}

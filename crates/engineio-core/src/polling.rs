@@ -5,6 +5,8 @@ use crate::{
     validate_sid, EngineConfig, HandshakePacket, StreamingPayloadGuard, TransportKind,
     UpgradeState, WriteWatermarkController,
 };
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use bytes::{Buf, Bytes, BytesMut};
 use http::{Method, Request, Response, StatusCode};
 use http_body_util::{BodyExt, Full};
@@ -326,6 +328,12 @@ pub async fn handle_polling_request(
                     if let Some(ref h) = handler {
                         h.on_message(sid, sio_payload);
                     }
+                } else if let Some(b64_payload) = packet.strip_prefix('b') {
+                    if let Ok(raw_bin) = BASE64_STANDARD.decode(b64_payload) {
+                        if let Some(ref h) = handler {
+                            h.on_binary(sid, Bytes::from(raw_bin));
+                        }
+                    }
                 }
             }
 
@@ -361,5 +369,15 @@ mod tests {
         let reaped = store.reap_expired(u64::MAX / 2);
         assert_eq!(reaped, 1);
         assert_eq!(store.active_count(), 0);
+    }
+
+    #[test]
+    fn test_base64_binary_polling_packet_roundtrip() {
+        let payload = b"\x01\x02hello-bin";
+        let encoded = format!("b{}", BASE64_STANDARD.encode(payload));
+        let raw = BASE64_STANDARD
+            .decode(encoded.strip_prefix('b').unwrap())
+            .expect("valid base64");
+        assert_eq!(raw, payload);
     }
 }
