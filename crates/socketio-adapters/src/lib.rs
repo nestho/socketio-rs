@@ -1,7 +1,21 @@
 #![forbid(unsafe_code)]
 //! `socketio-adapters` implements Connection State Recovery (CSR) via monotonic
-//! stream offsets and ring-buffer / distributed stream replay (mitigating the 15.4%
-//! WiFi-jitter packet loss observed in at-most-once WebSocket deployments).
+//! stream offsets (`CsrReplayLog`, `RecoveryManager`) and pluggable horizontal
+//! scaling adapters (Redis/Valkey Streams, NATS JetStream, PostgreSQL).
+
+pub mod adapter;
+pub mod recovery;
+
+pub use adapter::{
+    Adapter, AdapterError, BroadcastOptions, ClusterBroadcastPacket, RemoteSocketInfo,
+};
+#[cfg(feature = "nats-adapter")]
+pub use adapter::NatsJetStreamAdapter;
+#[cfg(feature = "postgres-adapter")]
+pub use adapter::PostgresAdapter;
+#[cfg(feature = "redis-adapter")]
+pub use adapter::RedisStreamsAdapter;
+pub use recovery::{RecoveryManager, RecoveryOutcome, SessionRecoverySnapshot};
 
 use socketio_parser::SharedBytes;
 use std::collections::VecDeque;

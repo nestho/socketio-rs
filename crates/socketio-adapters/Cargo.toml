@@ -3,7 +3,17 @@ name = "socketio-adapters"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Pluggable horizontal scaling and durable Connection State Recovery (CSR) offset replay adapters"
+description = "Pluggable horizontal scaling (Redis/Valkey Streams, NATS JetStream, Postgres) and durable Connection State Recovery (CSR) adapters"
+
+[features]
+default = ["redis-adapter", "nats-adapter", "postgres-adapter"]
+redis-adapter = []
+nats-adapter = []
+postgres-adapter = []
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 socketio-parser.workspace = true
