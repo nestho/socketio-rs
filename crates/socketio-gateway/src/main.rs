@@ -116,6 +116,32 @@ async fn main() {
             .expect("valid bridge SocketAddr");
 
         let store = SessionStore::new(engine_cfg);
+        let bridge = socketio_server::bridge::SocketIoEngineBridge::new(Arc::clone(&io));
+        let bridge_for_ns = Arc::clone(&bridge);
+        io.ns("/", move |socket| {
+            let b = Arc::clone(&bridge_for_ns);
+            b.register_event_handler(
+                &socket.id,
+                "ping",
+                Arc::new(|_sock, ctx| {
+                    let ack = socketio_server::extract::AckSender::from_context(&ctx);
+                    ack.send(&"pong");
+                }),
+            );
+            let b2 = Arc::clone(&bridge_for_ns);
+            b2.register_event_handler(
+                &socket.id,
+                "echo",
+                Arc::new(|sock, ctx| {
+                    if let Ok((_ev, data)) =
+                        socketio_parser::parse_dynamic_event(ctx.payload.as_slice())
+                    {
+                        sock.emit("echo_reply", &data);
+                    }
+                }),
+            );
+        });
+
         let edge_listener = TcpListener::bind(edge_addr)
             .await
             .expect("failed to bind edge TCP listener");
@@ -209,13 +235,16 @@ async fn main() {
                     };
                     let _ = stream.set_nodelay(true);
                     let store_clone = store.clone();
+                    let bridge_clone: Arc<dyn engineio_core::EngineHandler> =
+                        Arc::clone(&bridge) as Arc<dyn engineio_core::EngineHandler>;
                     tokio::spawn(async move {
                         let svc = service_fn(move |req| {
                             let s = store_clone.clone();
+                            let b = Arc::clone(&bridge_clone);
                             async move {
                                 let resp = if req.uri().path().starts_with("/socket.io") {
                                     if is_websocket_upgrade(&req) {
-                                        handle_websocket_upgrade(req, s).await
+                                        handle_websocket_upgrade(req, s, Some(b)).await
                                     } else {
                                         handle_polling_request(req, s).await
                                     }

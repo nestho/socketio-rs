@@ -121,7 +121,7 @@ where
         let store = self.store.clone();
         Box::pin(async move {
             let resp = if is_websocket_upgrade(&req) {
-                handle_websocket_upgrade(req, store).await
+                handle_websocket_upgrade(req, store, None).await
             } else {
                 handle_polling_request(req, store).await
             };

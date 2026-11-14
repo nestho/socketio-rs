@@ -5,11 +5,13 @@
 //! enforcement (mitigating CVE-2026-59725), constant-time `sid` validation
 //! (mitigating CVE-2026-59724), and explicit write watermarks (128 KiB / 16 KiB).
 
+pub mod bridge;
 pub mod driver;
 pub mod polling;
 pub mod webtransport;
 pub mod ws;
 
+pub use bridge::EngineHandler;
 pub use driver::{
     detect_optimal_driver, AdaptiveDriver, DriverCapabilities, IoDriver, IoDriverKind,
     SocketTuningProfile,

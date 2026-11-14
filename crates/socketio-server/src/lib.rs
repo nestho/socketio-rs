@@ -5,11 +5,13 @@
 //! static/dynamic namespaces, and `SocketIoLayer` (`tower::Layer`).
 
 pub mod ack;
+pub mod bridge;
 pub mod extract;
 pub mod layer;
 
 pub mod prelude {
     pub use crate::ack::{AckError, AckTable};
+    pub use crate::bridge::SocketIoEngineBridge;
     pub use crate::extract::{AckSender, Bin, Data, EventContext, FromEventContext, State, TryData};
     pub use crate::layer::{LayerConfig, SocketIoLayer, SocketIoService};
     pub use crate::{

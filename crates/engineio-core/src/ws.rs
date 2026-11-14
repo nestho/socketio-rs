@@ -85,6 +85,7 @@ fn bad_request(body: &'static [u8]) -> Response<Full<Bytes>> {
 pub async fn handle_websocket_upgrade(
     req: Request<Incoming>,
     store: SessionStore,
+    handler: Option<std::sync::Arc<dyn crate::EngineHandler>>,
 ) -> Response<Full<Bytes>> {
     let query = req.uri().query().unwrap_or("").to_owned();
     if extract_query_param(&query, "EIO") != Some("4") {
@@ -116,7 +117,7 @@ pub async fn handle_websocket_upgrade(
                 let ws_stream =
                     WebSocketStream::from_raw_socket(TokioIo::new(upgraded), Role::Server, None)
                         .await;
-                run_ws_session(ws_stream, sid_opt, store, config).await;
+                run_ws_session(ws_stream, sid_opt, store, config, handler).await;
             }
             Err(_) => {
                 // Client aborted before upgrade completed
@@ -140,6 +141,7 @@ async fn run_ws_session<S>(
     sid_opt: Option<String>,
     store: SessionStore,
     config: EngineConfig,
+    handler: Option<std::sync::Arc<dyn crate::EngineHandler>>,
 ) where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
@@ -162,6 +164,10 @@ async fn run_ws_session<S>(
             (hs.sid, UpgradeFsm::new_direct_ws())
         }
     };
+
+    if let Some(ref h) = handler {
+        h.on_open(&sid, out_tx.clone());
+    }
 
     let ping_interval = Duration::from_millis(config.ping_interval_ms.max(100));
     let ping_timeout = Duration::from_millis(config.ping_timeout_ms.max(100));
@@ -207,6 +213,11 @@ async fn run_ws_session<S>(
                         } else if s == "1" {
                             // Engine.IO CLOSE
                             break;
+                        } else if let Some(sio_payload) = s.strip_prefix('4') {
+                            // Engine.IO MESSAGE ('4...') -> dispatch to Socket.IO layer
+                            if let Some(ref h) = handler {
+                                h.on_message(&sid, sio_payload);
+                            }
                         } else if let Ok(Some(reply)) = fsm.on_control_packet(s) {
                             if out_tx.try_send(reply.to_owned()).is_err() {
                                 break;
@@ -230,6 +241,9 @@ async fn run_ws_session<S>(
         }
     }
 
+    if let Some(ref h) = handler {
+        h.on_close(&sid);
+    }
     store.remove_session(&sid);
     let _ = ws_tx.close().await;
 }
