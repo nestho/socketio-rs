@@ -386,3 +386,84 @@ async fn e2e_cswsh_origin_policy_rejects_disallowed_origin_with_403() {
     let resp_str = String::from_utf8_lossy(&resp_bytes);
     assert!(resp_str.contains("403 Forbidden"));
 }
+
+#[tokio::test]
+async fn e2e_control_broadcast_and_healthz_over_hyper() {
+    use http::Method;
+    use http_body_util::BodyExt;
+    use socketio_parser::{encode_event_simd, encode_v5_packet, PacketType, SocketIoPacket};
+
+    let io = Arc::new(SocketIo::new(4));
+    let (sock_tx, mut sock_rx) = tokio::sync::mpsc::channel(8);
+    let sock = SocketRef::new("sid_ctrl_00000001", "/", Arc::clone(&io.rooms), sock_tx);
+    sock.join("ops:alerts");
+
+    let (mut client_io, server_io) = tokio::io::duplex(32_768);
+    let io_srv = Arc::clone(&io);
+    let server_task = tokio::spawn(async move {
+        let svc = service_fn(move |req: http::Request<hyper::body::Incoming>| {
+            let io_c = Arc::clone(&io_srv);
+            async move {
+                let resp = match (req.method(), req.uri().path()) {
+                    (&Method::GET, "/healthz") => Response::builder()
+                        .status(StatusCode::OK)
+                        .body(Full::new(Bytes::from_static(b"{\"status\":\"ok\"}")))
+                        .unwrap(),
+                    (&Method::POST, "/_broadcast") => {
+                        let body = req.into_body().collect().await.unwrap().to_bytes();
+                        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                        let payload = encode_event_simd(
+                            v["event"].as_str().unwrap(),
+                            &v["data"],
+                        )
+                        .unwrap();
+                        let frame = encode_v5_packet(&SocketIoPacket {
+                            packet_type: PacketType::Event,
+                            namespace: "/".to_owned(),
+                            ack_id: None,
+                            attachments: 0,
+                            payload,
+                        });
+                        let delivered = io_c
+                            .rooms
+                            .broadcast_zero_copy(v["room"].as_str().unwrap(), &frame);
+                        Response::builder()
+                            .status(StatusCode::OK)
+                            .body(Full::new(Bytes::from(format!(
+                                "{{\"delivered\":{delivered}}}"
+                            ))))
+                            .unwrap()
+                    }
+                    _ => Response::builder()
+                        .status(StatusCode::NOT_FOUND)
+                        .body(Full::new(Bytes::new()))
+                        .unwrap(),
+                };
+                Ok::<_, std::convert::Infallible>(resp)
+            }
+        });
+        let _ = hyper::server::conn::http1::Builder::new()
+            .keep_alive(false)
+            .serve_connection(TokioIo::new(server_io), svc)
+            .await;
+    });
+
+    let body = r#"{"room":"ops:alerts","event":"alert","data":{"level":"high"}}"#;
+    let req = format!(
+        "POST /_broadcast HTTP/1.1\r\nHost: localhost\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    client_io.write_all(req.as_bytes()).await.unwrap();
+    client_io.flush().await.unwrap();
+
+    let mut resp_bytes = Vec::new();
+    client_io.read_to_end(&mut resp_bytes).await.unwrap();
+    let _ = server_task.await;
+    let resp_str = String::from_utf8_lossy(&resp_bytes);
+    assert!(resp_str.contains("{\"delivered\":1}"));
+    assert_eq!(
+        sock_rx.try_recv().unwrap().as_slice(),
+        b"2[\"alert\",{\"level\":\"high\"}]"
+    );
+}

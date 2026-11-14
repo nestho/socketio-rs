@@ -276,6 +276,13 @@ async fn main() {
                         let adp_inner = adp_c.clone();
                         async move {
                             let resp = match (req.method(), req.uri().path()) {
+                                (&Method::GET, "/healthz") => Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("Content-Type", "application/json")
+                                    .body(Full::new(Bytes::from(format!(
+                                        "{{\"status\":\"ok\",\"shards\":{cores}}}"
+                                    ))))
+                                    .unwrap_or_else(|_| Response::new(Full::new(Bytes::new()))),
                                 (&Method::GET, "/metrics") => Response::builder()
                                     .status(StatusCode::OK)
                                     .header("Content-Type", "text/plain; version=0.0.4")

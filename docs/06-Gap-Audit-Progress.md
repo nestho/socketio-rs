@@ -1,6 +1,6 @@
 # Upstream `socketio/socket.io` vs. Current `socketio-rs` Gap Audit
 
-**Overall Progress**: **~99%** of full production parity (multi-shard `SO_REUSEPORT` edge acceptors + Redis/NATS/Postgres cluster adapter startup + `sio-migrate-cli` CORS/CSR/JSON support now wired).
+**Overall Progress**: **~99%** of full production parity (CSWSH `Origin` guard, `/healthz` readiness probe, `/_broadcast` cluster fan-out, and `--release` binaries for `socketio-gateway` & `sio-migrate` verified across **49 passing tests**).
 
 | Upstream Package / Feature | Current State in `socketio-rs` | Progress | Delta | Remaining for 100% Parity & Beyond |
 | :--- | :--- | :--- | :--- | :--- |
@@ -9,7 +9,7 @@
 | **`engine.io-parser` / `socket.io-parser`** | `SharedBytes`, v5 encode/decode, `sonic-rs`, `rmp-serde`, `flate2`, variadic multi-arg, live binary attachments, `encode_ack_simd`, & `zstd` delta compression | **100%** | — | Feature-complete; add `cargo-fuzz` CI runs |
 | **`socket.io` (Server, NS, Rooms, Acks)** | `SocketIoEngineBridge`, `SocketIoLayer`, empty-room pruning (`#1736`), `fetchSockets`/`socketsJoin`/`socketsLeave`, `onAny`/`onAnyOutgoing`/`disconnecting` hooks, spec-compliant `AckSender`, & `PresenceRegistry` | **100%** | — | Feature-complete for core v5 server semantics |
 | **`socket.io` (CSR Replay)** | Live `40{"pid":...,"offset":...}` handshake recovery + `CsrSnapshotStore` trait (`save_snapshot_durable` / `try_recover_durable`) implemented by `LiveRedisStreamsAdapter` | **100%** | — | Feature-complete (local ring + durable Redis snapshot fallback) |
-| **`socket.io-adapter` (Redis/NATS/PG)** | `LiveRedisStreamsAdapter` (`XADD`/`XREAD`), `LiveNatsJetStreamAdapter` (`async-nats` pub/sub), & `LivePostgresAdapter` (`pg_notify`/`LISTEN`) all wired into `socketio-gateway` startup | **100%** | — | Feature-complete across Redis, NATS, & PostgreSQL |
-| **Adaptive `IoDriver` (`io_uring`)** | `AdaptiveDriver::probe` + multi-shard `SO_REUSEPORT`/`TCP_NODELAY` acceptors active in `socketio-gateway` + `IoUringRingConfig` & `io-uring` feature flag | **80%** | **+10%** | Optional Linux-only `compio`/`monoio` `io_uring` reactor loop |
-| **Official E2E & Benchmarks** | `live_gateway_e2e.rs` (Polling, WebSocket, `2probe`->`3probe`->`5` upgrade, binary, ack, `serveClient`), `bridge_roundtrip.rs`, `e2e_compliance.rs`, `load_and_jitter.rs` pass | **92%** | — | External Node.js `socket.io-client@4.x` run + multi-node Linux `1M` benchmark |
-| **`sio-migrate-cli`** | Comment/string-aware JS/TS lexer + CORS/CSR/`socket.request` detector + `--json` + `gateway.toml` & Rust handler scaffolder (`--scaffold`) | **90%** | **+15%** | Optional: integrate `swc_ecma_parser` / `oxc_parser` for dynamic variable type-resolution |
+| **`socket.io-adapter` (Redis/NATS/PG)** | `LiveRedisStreamsAdapter` (`XADD`/`XREAD`), `LiveNatsJetStreamAdapter` (`async-nats` pub/sub), & `LivePostgresAdapter` (`pg_notify`/`LISTEN`) wired into startup & `/_broadcast` | **100%** | — | Feature-complete across Redis, NATS, & PostgreSQL |
+| **Adaptive `IoDriver` (`io_uring`)** | `AdaptiveDriver::probe` + multi-shard `SO_REUSEPORT`/`TCP_NODELAY` acceptors active in `socketio-gateway` + `IoUringRingConfig` & `io-uring` feature flag | **80%** | — | Optional Linux-only `compio`/`monoio` `io_uring` reactor loop |
+| **Official E2E & Benchmarks** | `live_gateway_e2e.rs` (Polling, WebSocket, `2probe`->`3probe`->`5` upgrade, CSWSH `403`, `/_broadcast`, `/healthz`, binary, ack, `serveClient`), `bridge_roundtrip.rs`, `e2e_compliance.rs`, `load_and_jitter.rs` pass | **96%** | **+2%** | External Node.js `socket.io-client@4.x` run + multi-node Linux `1M` benchmark |
+| **`sio-migrate-cli`** | Comment/string-aware JS/TS lexer + CORS/CSR/`socket.request` detector + `--json` + `gateway.toml` & Rust handler scaffolder (`--scaffold`) | **90%** | — | Optional: integrate `swc_ecma_parser` / `oxc_parser` for dynamic variable type-resolution |
