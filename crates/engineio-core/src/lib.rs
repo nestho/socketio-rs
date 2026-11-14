@@ -21,7 +21,8 @@ pub use polling::{
     ENGINEIO_RECORD_SEPARATOR,
 };
 pub use webtransport::{
-    compute_jittered_duration_ms, WebTransportConfig, WebTransportSessionGuard,
+    compute_jittered_duration_ms, serve_webtransport_endpoint, WebTransportConfig,
+    WebTransportSessionGuard,
 };
 pub use ws::{handle_websocket_upgrade, is_websocket_upgrade, UpgradeFsm};
 

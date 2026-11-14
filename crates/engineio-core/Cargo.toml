@@ -17,3 +17,4 @@ hyper.workspace = true
 hyper-util.workspace = true
 tokio.workspace = true
 tokio-tungstenite.workspace = true
+wtransport.workspace = true

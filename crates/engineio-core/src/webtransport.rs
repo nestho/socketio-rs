@@ -1,8 +1,17 @@
-//! Engine.IO v4 HTTP/3 WebTransport (QUIC) transport framing, single-stream-per-session
-//! enforcement, and constant-time `sid` validation (mitigating CVE-2026-59724) (`S4-T01`, `S4-T02`).
+//! Engine.IO v4 HTTP/3 WebTransport (QUIC) transport (`wtransport` + `quinn` + `rustls`),
+//! single-stream-per-session enforcement, and constant-time `sid` validation (CVE-2026-59724).
 
-use crate::{validate_sid, EngineError, TransportKind, UpgradeState};
+use crate::polling::generate_sid;
+use crate::{
+    validate_sid, EngineConfig, EngineError, EngineHandler, HandshakePacket, TransportKind,
+    UpgradeState,
+};
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::mpsc;
+use wtransport::{Endpoint, Identity, ServerConfig};
 
 /// HTTP/3 WebTransport (QUIC / `wtransport` + `quinn`) endpoint configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +68,99 @@ impl WebTransportSessionGuard {
     }
 }
 
+/// Starts a live HTTP/3 WebTransport (`wtransport` / `quinn`) server endpoint
+/// listening for Engine.IO v4 bidirectional streams (`S4-T01`, `S4-T02`).
+pub async fn serve_webtransport_endpoint(
+    bind_addr: SocketAddr,
+    engine_cfg: EngineConfig,
+    handler: Option<Arc<dyn EngineHandler>>,
+) -> Result<(), std::io::Error> {
+    let identity = Identity::self_signed(["localhost", "127.0.0.1"])
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+    let wt_server_cfg = ServerConfig::builder()
+        .with_bind_address(bind_addr)
+        .with_identity(identity)
+        .build();
+
+    let endpoint = Endpoint::server(wt_server_cfg)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+    loop {
+        let incoming = endpoint.accept().await;
+        let cfg = engine_cfg.clone();
+        let h_clone = handler.clone();
+
+        tokio::spawn(async move {
+            let Ok(session_request) = incoming.await else {
+                return;
+            };
+            let Ok(connection) = session_request.accept().await else {
+                return;
+            };
+            let sid = generate_sid();
+            let Ok(guard) = WebTransportSessionGuard::new(&sid) else {
+                return;
+            };
+            let Ok((mut send_stream, mut recv_stream)) = connection.accept_bi().await else {
+                return;
+            };
+            if guard.accept_bidi_stream().is_err() {
+                return;
+            }
+
+            let hs = HandshakePacket {
+                sid: sid.clone(),
+                upgrades: vec![],
+                ping_interval: cfg.ping_interval_ms,
+                ping_timeout: cfg.ping_timeout_ms,
+                max_payload: cfg.max_payload_bytes,
+            };
+            let open_frame = format!("{}\n", hs.to_engineio_open_frame());
+            if send_stream.write_all(open_frame.as_bytes()).await.is_err() {
+                return;
+            }
+
+            let (out_tx, mut out_rx) = mpsc::channel::<String>(256);
+            if let Some(ref h) = h_clone {
+                h.on_open(&sid, out_tx);
+            }
+
+            let mut read_buf = vec![0u8; 8192];
+            loop {
+                tokio::select! {
+                    Some(outbound) = out_rx.recv() => {
+                        let line = format!("{outbound}\n");
+                        if send_stream.write_all(line.as_bytes()).await.is_err() {
+                            break;
+                        }
+                    }
+                    res = recv_stream.read(&mut read_buf) => {
+                        match res {
+                            Ok(Some(n)) if n > 0 => {
+                                if let Ok(text) = std::str::from_utf8(&read_buf[..n]) {
+                                    for pkt in text.lines() {
+                                        if let Some(sio) = pkt.strip_prefix('4') {
+                                            if let Some(ref h) = h_clone {
+                                                h.on_message(&sid, sio);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+            }
+
+            if let Some(ref h) = h_clone {
+                h.on_close(&sid);
+            }
+        });
+    }
+}
+
 /// Computes deterministic per-connection jittered max duration (Envoy 1.39.0 pattern)
 /// to prevent synchronized client reconnect avalanches (`S4-T05`).
 pub fn compute_jittered_duration_ms(base_ms: u64, jitter_pct: u8, sid: &str) -> u64 {
@@ -87,7 +189,6 @@ mod tests {
 
         let guard = WebTransportSessionGuard::new("FSDjX-WRwSA4zTZMALqx").expect("valid sid");
         assert!(guard.accept_bidi_stream().is_ok());
-        // Second bidi stream MUST be rejected per Engine.IO v4 WebTransport spec
         assert!(guard.accept_bidi_stream().is_err());
     }
 
