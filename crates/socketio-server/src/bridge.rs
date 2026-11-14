@@ -1,27 +1,44 @@
-//! Live Engine.IO v4 -> Socket.IO v5 session bridge (`SocketIoEngineBridge`).
-//! Connects incoming `4...` (`MESSAGE`) frames from `engineio-core` to
-//! `socketio-parser`, `NamespaceRegistry`, `SocketRef` event handlers, and `AckTable`.
+//! Live Engine.IO v4 -> Socket.IO v5 session bridge (`SocketIoEngineBridge`)
+//! with integrated `pid` + `offset` Connection State Recovery (CSR).
 
 use crate::ack::AckTable;
 use crate::extract::EventContext;
 use crate::{SocketIo, SocketRef};
 use engineio_core::EngineHandler;
+use serde::Deserialize;
+use socketio_adapters::{RecoveryManager, SessionRecoverySnapshot};
 use socketio_parser::{decode_v5_packet, parse_dynamic_event, PacketType, SharedBytes};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 pub type EventCallback = Arc<dyn Fn(SocketRef, EventContext) + Send + Sync>;
 
+#[derive(Debug, Deserialize)]
+struct ConnectAuthPayload {
+    pid: Option<String>,
+    offset: Option<String>,
+}
+
+fn epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 /// Bridges `engineio-core` transport sessions to `socketio-server` namespaces,
-/// rooms, event callbacks, and acknowledgement correlation.
+/// rooms, event callbacks, acknowledgement correlation, and `RecoveryManager` CSR.
 pub struct SocketIoEngineBridge {
     io: Arc<SocketIo>,
     acks: Arc<AckTable>,
+    recovery: Option<Arc<RecoveryManager>>,
     sessions: RwLock<HashMap<String, ActiveSession>>,
 }
 
 struct ActiveSession {
+    pid: String,
     raw_outbound: mpsc::Sender<String>,
     socket_outbound: mpsc::Sender<SharedBytes>,
     sockets_by_ns: HashMap<String, SocketRef>,
@@ -33,17 +50,22 @@ impl SocketIoEngineBridge {
         Arc::new(Self {
             io,
             acks: Arc::new(AckTable::new(4096)),
+            recovery: None,
+            sessions: RwLock::new(HashMap::new()),
+        })
+    }
+
+    pub fn with_recovery(io: Arc<SocketIo>, recovery: Arc<RecoveryManager>) -> Arc<Self> {
+        Arc::new(Self {
+            io,
+            acks: Arc::new(AckTable::new(4096)),
+            recovery: Some(recovery),
             sessions: RwLock::new(HashMap::new()),
         })
     }
 
     /// Registers an event callback (`socket.on(event, ...)`) for a connected session.
-    pub fn register_event_handler(
-        &self,
-        sid: &str,
-        event: &str,
-        cb: EventCallback,
-    ) {
+    pub fn register_event_handler(&self, sid: &str, event: &str, cb: EventCallback) {
         if let Ok(guard) = self.sessions.read() {
             if let Some(sess) = guard.get(sid) {
                 if let Ok(mut handlers) = sess.event_handlers.write() {
@@ -59,7 +81,6 @@ impl EngineHandler for SocketIoEngineBridge {
         let (sock_tx, mut sock_rx) = mpsc::channel::<SharedBytes>(256);
         let raw_tx_clone = raw_outbound.clone();
 
-        // Forward Socket.IO SharedBytes packets as Engine.IO MESSAGE ('4' + packet) frames
         tokio::spawn(async move {
             while let Some(pkt) = sock_rx.recv().await {
                 if let Ok(s) = std::str::from_utf8(pkt.as_slice()) {
@@ -71,6 +92,7 @@ impl EngineHandler for SocketIoEngineBridge {
         });
 
         let session = ActiveSession {
+            pid: format!("pid-{sid}"),
             raw_outbound,
             socket_outbound: sock_tx,
             sockets_by_ns: HashMap::new(),
@@ -90,13 +112,31 @@ impl EngineHandler for SocketIoEngineBridge {
         match pkt.packet_type {
             PacketType::Connect => {
                 let ns = pkt.namespace.clone();
-                let (socket_ref, raw_out) = {
+                let auth_req = serde_json::from_slice::<ConnectAuthPayload>(pkt.payload.as_slice()).ok();
+
+                let recovered_outcome = auth_req
+                    .as_ref()
+                    .and_then(|a| a.pid.as_deref().zip(a.offset.as_deref()))
+                    .and_then(|(pid, off_str)| {
+                        let off = off_str.parse::<u64>().ok()?;
+                        self.recovery.as_ref()?.try_recover(pid, off, epoch_ms())
+                    });
+
+                let (socket_ref, raw_out, active_pid) = {
                     let Ok(mut guard) = self.sessions.write() else {
                         return;
                     };
                     let Some(sess) = guard.get_mut(sid) else {
                         return;
                     };
+                    if let Some(ref outcome) = recovered_outcome {
+                        if let Some(req_pid) = auth_req.as_ref().and_then(|a| a.pid.clone()) {
+                            sess.pid = req_pid;
+                        }
+                        for room in &outcome.rooms {
+                            self.io.rooms.join(room, sid);
+                        }
+                    }
                     let sock = SocketRef::new(
                         sid,
                         ns.clone(),
@@ -104,17 +144,30 @@ impl EngineHandler for SocketIoEngineBridge {
                         sess.socket_outbound.clone(),
                     );
                     sess.sockets_by_ns.insert(ns.clone(), sock.clone());
-                    (sock, sess.raw_outbound.clone())
+                    (sock, sess.raw_outbound.clone(), sess.pid.clone())
                 };
 
-                // Send Socket.IO v5 CONNECT ACK: `40{"sid":"<sid>"}` (or `40/ns,{"sid":"<sid>"}`)
                 let ns_prefix = if ns == "/" {
                     String::new()
                 } else {
                     format!("{ns},")
                 };
-                let connect_ack = format!("40{ns_prefix}{{\"sid\":\"{sid}\"}}");
+
+                let connect_ack = if self.recovery.is_some() {
+                    format!("40{ns_prefix}{{\"sid\":\"{sid}\",\"pid\":\"{active_pid}\"}}")
+                } else {
+                    format!("40{ns_prefix}{{\"sid\":\"{sid}\"}}")
+                };
                 let _ = raw_out.try_send(connect_ack);
+
+                // Replay any missed CSR frames immediately after CONNECT ACK
+                if let Some(outcome) = recovered_outcome {
+                    for frame in outcome.missed_frames {
+                        if let Ok(s) = std::str::from_utf8(frame.as_slice()) {
+                            let _ = raw_out.try_send(format!("4{s}"));
+                        }
+                    }
+                }
 
                 if let Some(handler) = self.io.namespaces.resolve(&ns) {
                     handler(socket_ref);
@@ -164,9 +217,21 @@ impl EngineHandler for SocketIoEngineBridge {
     }
 
     fn on_close(&self, sid: &str) {
+        let joined_rooms = self.io.rooms.rooms_for_socket(sid);
         self.io.rooms.unregister_socket(sid);
         if let Ok(mut guard) = self.sessions.write() {
-            guard.remove(sid);
+            if let Some(sess) = guard.remove(sid) {
+                if let Some(ref rec) = self.recovery {
+                    rec.save_snapshot(SessionRecoverySnapshot {
+                        pid: sess.pid,
+                        sid: sid.to_owned(),
+                        namespace: "/".to_owned(),
+                        rooms: joined_rooms,
+                        last_offset: 0,
+                        disconnected_at_ms: epoch_ms(),
+                    });
+                }
+            }
         }
     }
 }

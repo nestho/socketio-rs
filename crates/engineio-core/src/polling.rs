@@ -181,6 +181,7 @@ fn text_response(status: StatusCode, body: impl Into<Bytes>) -> Response<Full<By
 pub async fn handle_polling_request(
     req: Request<Incoming>,
     store: SessionStore,
+    handler: Option<Arc<dyn crate::EngineHandler>>,
 ) -> Response<Full<Bytes>> {
     let query = req.uri().query().unwrap_or("").to_owned();
     let eio = extract_query_param(&query, "EIO");
@@ -191,12 +192,25 @@ pub async fn handle_polling_request(
         );
     }
 
-    let sid_opt = extract_query_param(&query, "sid");
+    let sid_opt = extract_query_param(&query, "sid").map(str::to_owned);
 
     match *req.method() {
-        Method::GET => match sid_opt {
+        Method::GET => match sid_opt.as_deref() {
             None => {
                 let hs = store.create_session();
+                if let Some(ref h) = handler {
+                    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(256);
+                    let store_fwd = store.clone();
+                    let sid_fwd = hs.sid.clone();
+                    tokio::spawn(async move {
+                        while let Some(pkt) = rx.recv().await {
+                            if !store_fwd.enqueue_packet(&sid_fwd, pkt) {
+                                break;
+                            }
+                        }
+                    });
+                    h.on_open(&hs.sid, tx);
+                }
                 text_response(StatusCode::OK, Bytes::from(hs.to_engineio_open_frame()))
             }
             Some(sid) => {
@@ -234,7 +248,7 @@ pub async fn handle_polling_request(
             }
         },
         Method::POST => {
-            let Some(sid) = sid_opt else {
+            let Some(sid) = sid_opt.as_deref() else {
                 return text_response(
                     StatusCode::BAD_REQUEST,
                     Bytes::from_static(b"{\"code\":1,\"message\":\"Session ID unknown\"}"),
@@ -282,11 +296,18 @@ pub async fn handle_polling_request(
                     continue;
                 }
                 if packet.starts_with('1') {
+                    if let Some(ref h) = handler {
+                        h.on_close(sid);
+                    }
                     store.remove_session(sid);
                 } else if let Some(rest) = packet.strip_prefix('2') {
                     // Engine.IO ping -> enqueue pong ('3' + probe payload)
                     let pong = format!("3{rest}");
                     store.enqueue_packet(sid, pong);
+                } else if let Some(sio_payload) = packet.strip_prefix('4') {
+                    if let Some(ref h) = handler {
+                        h.on_message(sid, sio_payload);
+                    }
                 }
             }
 

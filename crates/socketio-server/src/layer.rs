@@ -119,11 +119,12 @@ where
         }
 
         let store = self.store.clone();
+        let handler = self.handler.clone();
         Box::pin(async move {
             let resp = if is_websocket_upgrade(&req) {
-                handle_websocket_upgrade(req, store, None).await
+                handle_websocket_upgrade(req, store, handler).await
             } else {
-                handle_polling_request(req, store).await
+                handle_polling_request(req, store, handler).await
             };
             Ok(resp)
         })

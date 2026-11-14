@@ -108,6 +108,20 @@ impl ShardedRoomIndex {
         }
     }
 
+    /// Returns all rooms currently joined by `sid`.
+    pub fn rooms_for_socket(&self, sid: &str) -> Vec<String> {
+        let idx = self.shard_for_socket(sid);
+        let mut out = Vec::new();
+        if let Ok(guard) = self.shards[idx].read() {
+            for (room, members) in &guard.rooms {
+                if members.contains(sid) {
+                    out.push(room.clone());
+                }
+            }
+        }
+        out
+    }
+
     /// Removes a socket from its owning shard and all joined rooms.
     pub fn unregister_socket(&self, sid: &str) {
         let idx = self.shard_for_socket(sid);

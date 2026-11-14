@@ -116,7 +116,14 @@ async fn main() {
             .expect("valid bridge SocketAddr");
 
         let store = SessionStore::new(engine_cfg);
-        let bridge = socketio_server::bridge::SocketIoEngineBridge::new(Arc::clone(&io));
+        let bridge = if gw_cfg.recovery.enabled {
+            socketio_server::bridge::SocketIoEngineBridge::with_recovery(
+                Arc::clone(&io),
+                Arc::clone(&recovery),
+            )
+        } else {
+            socketio_server::bridge::SocketIoEngineBridge::new(Arc::clone(&io))
+        };
         let bridge_for_ns = Arc::clone(&bridge);
         io.ns("/", move |socket| {
             let b = Arc::clone(&bridge_for_ns);
@@ -246,7 +253,7 @@ async fn main() {
                                     if is_websocket_upgrade(&req) {
                                         handle_websocket_upgrade(req, s, Some(b)).await
                                     } else {
-                                        handle_polling_request(req, s).await
+                                        handle_polling_request(req, s, Some(b)).await
                                     }
                                 } else {
                                     Response::builder()
