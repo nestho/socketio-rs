@@ -88,7 +88,7 @@ pub async fn handle_websocket_upgrade(
     handler: Option<std::sync::Arc<dyn crate::EngineHandler>>,
 ) -> Response<Full<Bytes>> {
     let query = req.uri().query().unwrap_or("").to_owned();
-    if extract_query_param(&query, "EIO") != Some("4") {
+    if !crate::polling::is_supported_eio_version(extract_query_param(&query, "EIO")) {
         return bad_request(b"{\"code\":5,\"message\":\"Unsupported protocol version\"}");
     }
 
@@ -232,6 +232,14 @@ async fn run_ws_session<S>(
                                     }
                                 }
                             }
+                        }
+                    }
+                    Some(Ok(Message::Binary(bin))) => {
+                        if bin.len() > config.max_payload_bytes {
+                            break;
+                        }
+                        if let Some(ref h) = handler {
+                            h.on_binary(&sid, bin);
                         }
                     }
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,

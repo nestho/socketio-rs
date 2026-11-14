@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[allow(dead_code)]
 pub struct GatewayConfig {
     #[serde(default)]
     pub server: ServerSection,
@@ -67,6 +68,7 @@ impl Default for EngineSection {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct SecuritySection {
     pub allowed_origins: Vec<String>,
     pub require_origin_header: bool,
@@ -88,6 +90,7 @@ impl Default for SecuritySection {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct RecoverySection {
     pub enabled: bool,
     pub max_disconnection_duration_ms: u64,

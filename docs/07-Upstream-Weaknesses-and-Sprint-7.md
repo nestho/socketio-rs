@@ -16,6 +16,6 @@ Based on a deep audit of [`socketio/socket.io`](https://github.com/socketio/sock
 ## Sprint 7 Tasks (`S7-T01`–`S7-T04`)
 
 - [x] **S7-T01** Prune empty room sets in `ShardedRoomIndex::leave` & `unregister_socket` (mitigating [Issue #1736](https://github.com/socketio/socket.io/issues/1736)).
-- [ ] **S7-T02** Add `EIO=3` (`v4` protocol) feature flag + anti-reconnect-flood teardown on version mismatch ([Issue #3477](https://github.com/socketio/socket.io/issues/3477)).
-- [ ] **S7-T03** Support variadic multi-argument event payloads (`["ev", a, b, c]`) in `socketio-parser` and binary payloads in `Adapter::server_side_emit`.
+- [x] **S7-T02** Add `EIO=3` (`v4` protocol) feature flag + anti-reconnect-flood teardown on version mismatch ([Issue #3477](https://github.com/socketio/socket.io/issues/3477)).
+- [x] **S7-T03** Support variadic multi-argument event payloads (`["ev", a, b, c]`) in `socketio-parser` and binary payloads in `Adapter::server_side_emit`.
 - [ ] **S7-T04** Add native Presence tracking, `zstd` delta compression for slow/mobile clients, and an offline APNs/FCM push fallback webhook.

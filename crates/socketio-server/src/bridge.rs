@@ -1,15 +1,20 @@
 //! Live Engine.IO v4 -> Socket.IO v5 session bridge (`SocketIoEngineBridge`)
-//! with integrated `pid` + `offset` Connection State Recovery (CSR).
+//! with integrated `pid` + `offset` Connection State Recovery (CSR) and
+//! live `BinaryAttachmentReconstructor` (`5...` / `6...` binary frames).
 
 use crate::ack::AckTable;
 use crate::extract::EventContext;
 use crate::{SocketIo, SocketRef};
+use bytes::Bytes;
 use engineio_core::EngineHandler;
 use serde::Deserialize;
 use socketio_adapters::{RecoveryManager, SessionRecoverySnapshot};
-use socketio_parser::{decode_v5_packet, parse_dynamic_event, PacketType, SharedBytes};
+use socketio_parser::{
+    decode_v5_packet, parse_dynamic_event, BinaryAttachmentReconstructor, PacketType, SharedBytes,
+    SocketIoPacket,
+};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
@@ -29,7 +34,7 @@ fn epoch_ms() -> u64 {
 }
 
 /// Bridges `engineio-core` transport sessions to `socketio-server` namespaces,
-/// rooms, event callbacks, acknowledgement correlation, and `RecoveryManager` CSR.
+/// rooms, event callbacks, acknowledgement correlation, binary attachments, and CSR.
 pub struct SocketIoEngineBridge {
     io: Arc<SocketIo>,
     acks: Arc<AckTable>,
@@ -43,6 +48,7 @@ struct ActiveSession {
     socket_outbound: mpsc::Sender<SharedBytes>,
     sockets_by_ns: HashMap<String, SocketRef>,
     event_handlers: Arc<RwLock<HashMap<String, EventCallback>>>,
+    bin_reconstructor: Mutex<BinaryAttachmentReconstructor>,
 }
 
 impl SocketIoEngineBridge {
@@ -74,6 +80,38 @@ impl SocketIoEngineBridge {
             }
         }
     }
+
+    fn dispatch_event(&self, sid: &str, pkt: SocketIoPacket, binaries: Vec<SharedBytes>) {
+        let Ok((event_name, _data)) = parse_dynamic_event(pkt.payload.as_slice()) else {
+            return;
+        };
+        let (sock_opt, cb_opt, sock_tx_opt) = {
+            let Ok(guard) = self.sessions.read() else {
+                return;
+            };
+            let Some(sess) = guard.get(sid) else {
+                return;
+            };
+            let sock = sess.sockets_by_ns.get(&pkt.namespace).cloned();
+            let cb = sess
+                .event_handlers
+                .read()
+                .ok()
+                .and_then(|h| h.get(&event_name).cloned());
+            (sock, cb, Some(sess.socket_outbound.clone()))
+        };
+
+        if let (Some(sock), Some(cb), Some(outbound)) = (sock_opt, cb_opt, sock_tx_opt) {
+            let ctx = EventContext {
+                namespace: pkt.namespace,
+                ack_id: pkt.ack_id,
+                payload: pkt.payload,
+                binaries,
+                outbound,
+            };
+            cb(sock, ctx);
+        }
+    }
 }
 
 impl EngineHandler for SocketIoEngineBridge {
@@ -97,6 +135,7 @@ impl EngineHandler for SocketIoEngineBridge {
             socket_outbound: sock_tx,
             sockets_by_ns: HashMap::new(),
             event_handlers: Arc::new(RwLock::new(HashMap::new())),
+            bin_reconstructor: Mutex::new(BinaryAttachmentReconstructor::default()),
         };
 
         if let Ok(mut guard) = self.sessions.write() {
@@ -112,7 +151,8 @@ impl EngineHandler for SocketIoEngineBridge {
         match pkt.packet_type {
             PacketType::Connect => {
                 let ns = pkt.namespace.clone();
-                let auth_req = serde_json::from_slice::<ConnectAuthPayload>(pkt.payload.as_slice()).ok();
+                let auth_req =
+                    serde_json::from_slice::<ConnectAuthPayload>(pkt.payload.as_slice()).ok();
 
                 let recovered_outcome = auth_req
                     .as_ref()
@@ -160,7 +200,6 @@ impl EngineHandler for SocketIoEngineBridge {
                 };
                 let _ = raw_out.try_send(connect_ack);
 
-                // Replay any missed CSR frames immediately after CONNECT ACK
                 if let Some(outcome) = recovered_outcome {
                     for frame in outcome.missed_frames {
                         if let Ok(s) = std::str::from_utf8(frame.as_slice()) {
@@ -174,34 +213,23 @@ impl EngineHandler for SocketIoEngineBridge {
                 }
             }
             PacketType::Event => {
-                let Ok((event_name, _data)) = parse_dynamic_event(pkt.payload.as_slice()) else {
-                    return;
-                };
-                let (sock_opt, cb_opt, sock_tx_opt) = {
+                self.dispatch_event(sid, pkt, vec![]);
+            }
+            PacketType::BinaryEvent => {
+                let completed = {
                     let Ok(guard) = self.sessions.read() else {
                         return;
                     };
                     let Some(sess) = guard.get(sid) else {
                         return;
                     };
-                    let sock = sess.sockets_by_ns.get(&pkt.namespace).cloned();
-                    let cb = sess
-                        .event_handlers
-                        .read()
-                        .ok()
-                        .and_then(|h| h.get(&event_name).cloned());
-                    (sock, cb, Some(sess.socket_outbound.clone()))
-                };
-
-                if let (Some(sock), Some(cb), Some(outbound)) = (sock_opt, cb_opt, sock_tx_opt) {
-                    let ctx = EventContext {
-                        namespace: pkt.namespace,
-                        ack_id: pkt.ack_id,
-                        payload: pkt.payload,
-                        binaries: vec![],
-                        outbound,
+                    let Ok(mut recon) = sess.bin_reconstructor.lock() else {
+                        return;
                     };
-                    cb(sock, ctx);
+                    recon.start(pkt)
+                };
+                if let Some((completed_pkt, bins)) = completed {
+                    self.dispatch_event(sid, completed_pkt, bins);
                 }
             }
             PacketType::Ack => {
@@ -213,6 +241,33 @@ impl EngineHandler for SocketIoEngineBridge {
                 self.io.rooms.unregister_socket(sid);
             }
             _ => {}
+        }
+    }
+
+    fn on_binary(&self, sid: &str, data: Bytes) {
+        let completed = {
+            let Ok(guard) = self.sessions.read() else {
+                return;
+            };
+            let Some(sess) = guard.get(sid) else {
+                return;
+            };
+            let Ok(mut recon) = sess.bin_reconstructor.lock() else {
+                return;
+            };
+            recon.push_attachment(SharedBytes::from_slice(&data))
+        };
+
+        if let Some((completed_pkt, bins)) = completed {
+            match completed_pkt.packet_type {
+                PacketType::BinaryEvent => self.dispatch_event(sid, completed_pkt, bins),
+                PacketType::BinaryAck => {
+                    if let Some(ack_id) = completed_pkt.ack_id {
+                        self.acks.resolve(ack_id, completed_pkt.payload);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 

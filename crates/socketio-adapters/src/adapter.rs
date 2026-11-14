@@ -38,11 +38,13 @@ pub struct RemoteSocketInfo {
 }
 
 /// Cluster-wide event envelope exchanged over Redis/Valkey, NATS, or PostgreSQL.
+/// Supports binary attachments (surpassing upstream `serverSideEmit`'s JSON-only limit).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ClusterBroadcastPacket {
     pub origin_node: String,
     pub opts: BroadcastOptions,
     pub payload_bytes: Vec<u8>,
+    pub binary_attachments: Vec<Vec<u8>>,
 }
 
 /// Async distributed adapter trait (`S3-T05`) mirroring `socket.io-adapter`.
@@ -123,6 +125,7 @@ impl Adapter for RedisStreamsAdapter {
             origin_node: self.node_id.clone(),
             opts,
             payload_bytes: encoded_packet.to_vec(),
+            binary_attachments: Vec::new(),
         };
         let state = Arc::clone(&self.state);
         Box::pin(async move {
@@ -257,6 +260,7 @@ impl Adapter for NatsJetStreamAdapter {
             origin_node: self.node_id.clone(),
             opts,
             payload_bytes: encoded_packet.to_vec(),
+            binary_attachments: Vec::new(),
         };
         let state = Arc::clone(&self.state);
         Box::pin(async move {

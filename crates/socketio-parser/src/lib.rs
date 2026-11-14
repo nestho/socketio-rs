@@ -214,6 +214,13 @@ pub fn parse_event_simd<T: DeserializeOwned>(payload: &[u8]) -> Result<(String, 
 
 /// Parses an untyped dynamic JSON event array `["event_name", serde_json::Value]`.
 pub fn parse_dynamic_event(payload: &[u8]) -> Result<(String, serde_json::Value), ParseError> {
+    let (event, args) = parse_variadic_event(payload)?;
+    let data = args.into_iter().next().unwrap_or(serde_json::Value::Null);
+    Ok((event, data))
+}
+
+/// Parses a variadic Socket.IO event array `["event_name", arg1, arg2, ...]` (`S7-T03`).
+pub fn parse_variadic_event(payload: &[u8]) -> Result<(String, Vec<serde_json::Value>), ParseError> {
     let val: serde_json::Value =
         serde_json::from_slice(payload).map_err(|e| ParseError::JsonError(e.to_string()))?;
     let arr = val
@@ -224,8 +231,8 @@ pub fn parse_dynamic_event(payload: &[u8]) -> Result<(String, serde_json::Value)
         .and_then(|v| v.as_str())
         .ok_or_else(|| ParseError::JsonError("missing event name string".to_owned()))?
         .to_owned();
-    let data = arr.get(1).cloned().unwrap_or(serde_json::Value::Null);
-    Ok((event, data))
+    let args = arr.iter().skip(1).cloned().collect();
+    Ok((event, args))
 }
 
 /// Serializes a Socket.IO event `["event", data]` using `sonic-rs` SIMD JSON.

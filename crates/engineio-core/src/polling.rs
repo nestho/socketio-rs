@@ -177,6 +177,16 @@ fn text_response(status: StatusCode, body: impl Into<Bytes>) -> Response<Full<By
         .unwrap_or_else(|_| Response::new(Full::new(Bytes::from_static(b"internal error"))))
 }
 
+/// Returns true if the requested `EIO` protocol version is supported.
+pub fn is_supported_eio_version(eio: Option<&str>) -> bool {
+    match eio {
+        Some("4") => true,
+        #[cfg(feature = "v4")]
+        Some("3") => true,
+        _ => false,
+    }
+}
+
 /// Processes an incoming Engine.IO v4 HTTP long-polling request (`GET` or `POST`).
 pub async fn handle_polling_request(
     req: Request<Incoming>,
@@ -185,11 +195,17 @@ pub async fn handle_polling_request(
 ) -> Response<Full<Bytes>> {
     let query = req.uri().query().unwrap_or("").to_owned();
     let eio = extract_query_param(&query, "EIO");
-    if eio != Some("4") {
-        return text_response(
-            StatusCode::BAD_REQUEST,
-            Bytes::from_static(b"{\"code\":5,\"message\":\"Unsupported protocol version\"}"),
-        );
+    if !is_supported_eio_version(eio) {
+        // Immediate teardown + Retry-After prevents Issue #3477 version-mismatch reconnect leaks
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .header("Content-Type", "application/json")
+            .header("Connection", "close")
+            .header("Retry-After", "5")
+            .body(Full::new(Bytes::from_static(
+                b"{\"code\":5,\"message\":\"Unsupported protocol version\"}",
+            )))
+            .unwrap_or_else(|_| text_response(StatusCode::BAD_REQUEST, b"Unsupported protocol"));
     }
 
     let sid_opt = extract_query_param(&query, "sid").map(str::to_owned);
