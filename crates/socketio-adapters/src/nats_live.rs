@@ -55,6 +55,39 @@ impl LiveNatsJetStreamAdapter {
     pub fn cluster_subject(&self) -> String {
         format!("{}.cluster", self.subject_prefix)
     }
+
+    /// Spawns a background NATS subscriber loop that forwards remote
+    /// `ClusterBroadcastPacket`s (skipping `origin_node == self.node_id`) to `handler`.
+    pub fn spawn_subscriber_loop(
+        &self,
+        handler: crate::adapter::ClusterPacketHandler,
+    ) -> tokio::task::JoinHandle<()> {
+        let client_opt = self.client.clone();
+        let nats_url = self.nats_url.clone();
+        let subject = self.broadcast_subject();
+        let local_node = self.node_id.clone();
+
+        tokio::spawn(async move {
+            use futures_util::StreamExt;
+            let client = match client_opt {
+                Some(c) => c,
+                None => match async_nats::connect(&nats_url).await {
+                    Ok(c) => c,
+                    Err(_) => return,
+                },
+            };
+            let Ok(mut sub) = client.subscribe(subject).await else {
+                return;
+            };
+            while let Some(msg) = sub.next().await {
+                if let Ok(pkt) = serde_json::from_slice::<ClusterBroadcastPacket>(&msg.payload) {
+                    if pkt.origin_node != local_node {
+                        handler(pkt);
+                    }
+                }
+            }
+        })
+    }
 }
 
 impl Adapter for LiveNatsJetStreamAdapter {

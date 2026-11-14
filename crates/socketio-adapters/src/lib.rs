@@ -13,7 +13,8 @@ pub mod recovery;
 pub mod redis_live;
 
 pub use adapter::{
-    Adapter, AdapterError, BroadcastOptions, ClusterBroadcastPacket, RemoteSocketInfo,
+    Adapter, AdapterError, BroadcastOptions, ClusterBroadcastPacket, ClusterPacketHandler,
+    RemoteSocketInfo,
 };
 #[cfg(feature = "nats-adapter")]
 pub use adapter::NatsJetStreamAdapter;

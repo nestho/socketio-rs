@@ -471,6 +471,13 @@ impl SocketIo {
     pub fn to(&self, room: impl Into<String>) -> BroadcastOperator {
         BroadcastOperator::new("/", Arc::clone(&self.rooms)).to(room)
     }
+
+    /// Dispatches a remote `ClusterBroadcastPacket` from Redis/NATS/Postgres into local shards.
+    pub fn handle_cluster_packet(&self, pkt: socketio_adapters::ClusterBroadcastPacket) -> usize {
+        let frame = SharedBytes::from_slice(&pkt.payload_bytes);
+        self.rooms
+            .broadcast_to_rooms(&pkt.opts.rooms, &pkt.opts.except, &[], &frame)
+    }
 }
 
 #[cfg(test)]
@@ -528,5 +535,28 @@ mod tests {
         assert!(io.namespaces.resolve("/").is_some());
         assert!(io.namespaces.resolve("/dynamic-101").is_some());
         assert!(io.namespaces.resolve("/unknown").is_none());
+    }
+
+    #[test]
+    fn test_handle_cluster_packet_fans_out_to_local_rooms() {
+        let io = SocketIo::new(4);
+        let (tx, mut rx) = mpsc::channel(8);
+        let sock = SocketRef::new("sid_cluster_00001", "/", Arc::clone(&io.rooms), tx);
+        sock.join("room:cluster");
+
+        let pkt = socketio_adapters::ClusterBroadcastPacket {
+            origin_node: "node-remote-2".to_owned(),
+            opts: socketio_adapters::BroadcastOptions {
+                namespace: "/".to_owned(),
+                rooms: vec!["room:cluster".to_owned()],
+                except: vec![],
+                local_only: false,
+            },
+            payload_bytes: b"2[\"sync\",1]".to_vec(),
+            binary_attachments: vec![],
+        };
+        let delivered = io.handle_cluster_packet(pkt);
+        assert_eq!(delivered, 1);
+        assert_eq!(rx.try_recv().unwrap().as_slice(), b"2[\"sync\",1]");
     }
 }

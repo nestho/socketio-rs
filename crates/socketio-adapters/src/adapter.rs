@@ -10,6 +10,7 @@ use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+pub type ClusterPacketHandler = Arc<dyn Fn(ClusterBroadcastPacket) + Send + Sync>;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AdapterError {

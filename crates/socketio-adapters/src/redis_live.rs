@@ -77,6 +77,48 @@ impl LiveRedisStreamsAdapter {
             None => Ok(None),
         }
     }
+
+    /// Spawns a background `XREAD BLOCK 1000` consumer loop that forwards remote
+    /// `ClusterBroadcastPacket`s (skipping `origin_node == self.node_id`) to `handler`.
+    pub fn spawn_subscriber_loop(
+        &self,
+        handler: crate::adapter::ClusterPacketHandler,
+    ) -> tokio::task::JoinHandle<()> {
+        let client = self.client.clone();
+        let stream_key = self.stream_key.clone();
+        let local_node = self.node_id.clone();
+
+        tokio::spawn(async move {
+            let mut last_id = "$".to_owned();
+            let opts = redis::streams::StreamReadOptions::default()
+                .block(1000)
+                .count(64);
+            loop {
+                let Ok(mut conn) = client.get_multiplexed_async_connection().await else {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
+                };
+                let reply: redis::RedisResult<redis::streams::StreamReadReply> =
+                    conn.xread_options(&[&stream_key], &[&last_id], &opts).await;
+                if let Ok(stream_reply) = reply {
+                    for key in stream_reply.keys {
+                        for entry in key.ids {
+                            last_id = entry.id.clone();
+                            if let Some(redis::Value::BulkString(raw)) = entry.map.get("packet") {
+                                if let Ok(pkt) =
+                                    serde_json::from_slice::<ClusterBroadcastPacket>(raw)
+                                {
+                                    if pkt.origin_node != local_node {
+                                        handler(pkt);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
 }
 
 impl Adapter for LiveRedisStreamsAdapter {

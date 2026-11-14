@@ -90,6 +90,10 @@ pub async fn serve_webtransport_endpoint(
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
     };
 
+    if let Some(leaf) = identity.certificate_chain().as_slice().first() {
+        println!("  WebTransport Cert SHA256 : {}", leaf.hash());
+    }
+
     let wt_server_cfg = ServerConfig::builder()
         .with_bind_address(bind_addr)
         .with_identity(identity)

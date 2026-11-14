@@ -194,6 +194,22 @@ async fn main() {
         println!("  Edge Socket.IO Listening : http://{edge_addr}{mount_prefix}/");
         println!("  Control/Broadcast API    : http://{bridge_addr}/_broadcast");
 
+        if gw_cfg.recovery.adapter == "redis" {
+            let redis_url =
+                std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
+            if let Ok(redis_adapter) = socketio_adapters::LiveRedisStreamsAdapter::connect(
+                format!("gateway-{}", std::process::id()),
+                "sio:cluster:stream",
+                &redis_url,
+            ) {
+                let io_cluster = Arc::clone(&io);
+                redis_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
+                    let _ = io_cluster.handle_cluster_packet(pkt);
+                }));
+                println!("  Redis Cluster Subscriber : active ({redis_url})");
+            }
+        }
+
         let io_bridge = Arc::clone(&io);
         let rec_bridge = Arc::clone(&recovery);
         let met_bridge = Arc::clone(&metrics);
