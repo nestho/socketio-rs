@@ -1,0 +1,8 @@
+[package]
+name = "socketio-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Zero-copy Arc<[u8]> shared-buffer Engine.IO v4 and Socket.IO v5 packet framing with decompression-bomb guards"
+
+[dependencies]

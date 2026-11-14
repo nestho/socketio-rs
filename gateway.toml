@@ -1,0 +1,34 @@
+# Default configuration for `socketio-gateway` (Standalone Polyglot Real-Time Edge)
+
+[server]
+bind_addr = "127.0.0.1:3000"
+path = "/socket.io/"
+io_driver = "auto" # "auto" probes io_uring and falls back to epoll/kqueue under container seccomp
+worker_threads = 0 # 0 = auto-detect physical CPU cores and pin via SO_REUSEPORT
+shutdown_drain_timeout_ms = 15000
+max_connection_duration_jitter_pct = 15
+
+[engine]
+ping_interval_ms = 25000
+ping_timeout_ms = 20000
+max_payload_bytes = 1000000
+write_high_watermark_bytes = 131072 # 128 KiB
+write_low_watermark_bytes = 16384   # 16 KiB
+tcp_notsent_lowat_bytes = 16384
+enable_webtransport_h3 = true
+
+[security]
+allowed_origins = ["localhost:3000", "app.example.com"]
+require_origin_header = true
+max_decompression_ratio = 100
+permessage_deflate_threshold_bytes = 1024
+server_max_window_bits = 10
+
+[recovery]
+enabled = true
+max_disconnection_duration_ms = 120000
+ring_buffer_capacity_per_room = 512
+adapter = "in_memory" # Options: "in_memory", "redis_streams", "nats_jetstream", "postgres"
+
+[bridge]
+broadcast_bind_addr = "127.0.0.1:3001"

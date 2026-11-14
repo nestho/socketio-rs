@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/engineio-core",
+    "crates/socketio-parser",
+    "crates/socketio-server",
+    "crates/socketio-adapters",
+    "crates/socketio-gateway",
+    "crates/sio-migrate-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+engineio-core = { path = "crates/engineio-core" }
+socketio-parser = { path = "crates/socketio-parser" }
+socketio-server = { path = "crates/socketio-server" }
+socketio-adapters = { path = "crates/socketio-adapters" }

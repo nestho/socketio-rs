@@ -1,0 +1,11 @@
+[package]
+name = "socketio-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sharded room router, cache-line padded metrics, CSWSH Origin guard, and Socket.IO server API"
+
+[dependencies]
+engineio-core.workspace = true
+socketio-parser.workspace = true
+socketio-adapters.workspace = true

@@ -1,0 +1,9 @@
+[package]
+name = "socketio-adapters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pluggable horizontal scaling and durable Connection State Recovery (CSR) offset replay adapters"
+
+[dependencies]
+socketio-parser.workspace = true
