@@ -2,7 +2,9 @@
 //! Connects incoming `4...` (`MESSAGE`) frames from `engineio-core` to
 //! `socketio-parser`, `NamespaceRegistry`, `SocketRef` event handlers, and `AckTable`.
 
-use crate::{AckTable, EventContext, SocketIo, SocketRef};
+use crate::ack::AckTable;
+use crate::extract::EventContext;
+use crate::{SocketIo, SocketRef};
 use engineio_core::EngineHandler;
 use socketio_parser::{decode_v5_packet, parse_dynamic_event, PacketType, SharedBytes};
 use std::collections::HashMap;
