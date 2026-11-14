@@ -170,13 +170,28 @@ pub fn extract_query_param<'a>(query: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
-fn text_response(status: StatusCode, body: impl Into<Bytes>) -> Response<Full<Bytes>> {
-    Response::builder()
+fn text_response_with_origin(
+    status: StatusCode,
+    body: impl Into<Bytes>,
+    origin: Option<&str>,
+) -> Response<Full<Bytes>> {
+    let mut b = Response::builder()
         .status(status)
         .header("Content-Type", "text/plain; charset=UTF-8")
-        .header("Access-Control-Allow-Origin", "*")
-        .body(Full::new(body.into()))
+        .header("Vary", "Origin");
+    if let Some(orig) = origin {
+        b = b
+            .header("Access-Control-Allow-Origin", orig)
+            .header("Access-Control-Allow-Credentials", "true");
+    } else {
+        b = b.header("Access-Control-Allow-Origin", "*");
+    }
+    b.body(Full::new(body.into()))
         .unwrap_or_else(|_| Response::new(Full::new(Bytes::from_static(b"internal error"))))
+}
+
+fn text_response(status: StatusCode, body: impl Into<Bytes>) -> Response<Full<Bytes>> {
+    text_response_with_origin(status, body, None)
 }
 
 /// Returns true if the requested `EIO` protocol version is supported.
@@ -189,12 +204,37 @@ pub fn is_supported_eio_version(eio: Option<&str>) -> bool {
     }
 }
 
-/// Processes an incoming Engine.IO v4 HTTP long-polling request (`GET` or `POST`).
+/// Processes an incoming Engine.IO v4 HTTP long-polling request (`OPTIONS`, `GET`, or `POST`).
 pub async fn handle_polling_request(
     req: Request<Incoming>,
     store: SessionStore,
     handler: Option<Arc<dyn crate::EngineHandler>>,
 ) -> Response<Full<Bytes>> {
+    let origin_hdr = req
+        .headers()
+        .get(http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+
+    if *req.method() == Method::OPTIONS {
+        let mut b = Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            .header("Access-Control-Max-Age", "86400")
+            .header("Vary", "Origin");
+        if let Some(ref orig) = origin_hdr {
+            b = b
+                .header("Access-Control-Allow-Origin", orig.as_str())
+                .header("Access-Control-Allow-Credentials", "true");
+        } else {
+            b = b.header("Access-Control-Allow-Origin", "*");
+        }
+        return b
+            .body(Full::new(Bytes::new()))
+            .unwrap_or_else(|_| Response::new(Full::new(Bytes::new())));
+    }
+
     let query = req.uri().query().unwrap_or("").to_owned();
     let eio = extract_query_param(&query, "EIO");
     if !is_supported_eio_version(eio) {
@@ -208,7 +248,11 @@ pub async fn handle_polling_request(
                 b"{\"code\":5,\"message\":\"Unsupported protocol version\"}",
             )))
             .unwrap_or_else(|_| {
-                text_response(StatusCode::BAD_REQUEST, Bytes::from_static(b"Unsupported protocol"))
+                text_response_with_origin(
+                    StatusCode::BAD_REQUEST,
+                    Bytes::from_static(b"Unsupported protocol"),
+                    origin_hdr.as_deref(),
+                )
             });
     }
 

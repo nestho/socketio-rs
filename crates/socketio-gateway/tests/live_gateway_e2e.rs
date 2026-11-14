@@ -467,3 +467,21 @@ async fn e2e_control_broadcast_and_healthz_over_hyper() {
         b"2[\"alert\",{\"level\":\"high\"}]"
     );
 }
+
+#[tokio::test]
+async fn e2e_cors_options_preflight_returns_204_with_credentials() {
+    let store = SessionStore::new(EngineConfig::default());
+    let io = Arc::new(SocketIo::new(4));
+    let bridge = SocketIoEngineBridge::new(Arc::clone(&io));
+    let h: Arc<dyn EngineHandler> = Arc::clone(&bridge) as Arc<dyn EngineHandler>;
+
+    let resp = send_http_request(
+        store,
+        h,
+        "OPTIONS /socket.io/?EIO=4&transport=polling HTTP/1.1\r\nHost: localhost\r\nOrigin: https://app.example.com\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    assert!(resp.contains("204 No Content"));
+    assert!(resp.to_lowercase().contains("access-control-allow-origin: https://app.example.com"));
+    assert!(resp.to_lowercase().contains("access-control-allow-credentials: true"));
+}

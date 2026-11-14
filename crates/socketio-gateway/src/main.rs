@@ -43,6 +43,23 @@ fn default_ns() -> String {
     "/".to_owned()
 }
 
+/// Lightweight HTTP/1.1 POST forwarder for `http://host:port/path` upstream webhooks.
+async fn forward_webhook_http1(url: &str, json_body: &str) -> std::io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let stripped = url.strip_prefix("http://").unwrap_or(url);
+    let (host_port, path) = match stripped.find('/') {
+        Some(idx) => (&stripped[..idx], &stripped[idx..]),
+        None => (stripped, "/"),
+    };
+    let mut stream = tokio::net::TcpStream::connect(host_port).await?;
+    let req = format!(
+        "POST {path} HTTP/1.1\r\nHost: {host_port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{json_body}",
+        json_body.len()
+    );
+    stream.write_all(req.as_bytes()).await?;
+    stream.flush().await
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -125,6 +142,14 @@ async fn main() {
             socketio_server::bridge::SocketIoEngineBridge::new(Arc::clone(&io))
         };
         let bridge_for_ns = Arc::clone(&bridge);
+        let webhook_url = gw_cfg
+            .bridge
+            .webhook_url
+            .clone()
+            .or_else(|| std::env::var("GATEWAY_WEBHOOK_URL").ok());
+        if let Some(ref wh) = webhook_url {
+            println!("  Upstream Event Webhook   : {wh}");
+        }
         io.ns("/", move |socket| {
             let b = Arc::clone(&bridge_for_ns);
             b.register_event_handler(
@@ -147,6 +172,30 @@ async fn main() {
                     }
                 }),
             );
+            if let Some(ref wh_url) = webhook_url {
+                let wh = wh_url.clone();
+                let b3 = Arc::clone(&bridge_for_ns);
+                b3.register_on_any(
+                    &socket.id,
+                    Arc::new(move |sock, event, ctx| {
+                        let url = wh.clone();
+                        let sid = sock.id.clone();
+                        let ns = sock.ns.clone();
+                        let ev = event.to_owned();
+                        let raw = String::from_utf8_lossy(ctx.payload.as_slice()).into_owned();
+                        tokio::spawn(async move {
+                            let body = serde_json::json!({
+                                "sid": sid,
+                                "namespace": ns,
+                                "event": ev,
+                                "payload": raw,
+                            })
+                            .to_string();
+                            let _ = forward_webhook_http1(&url, &body).await;
+                        });
+                    }),
+                );
+            }
         });
 
         let shard_std_listeners = driver

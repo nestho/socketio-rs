@@ -119,8 +119,8 @@ This sprint plan breaks down the redesign and port of [`socketio/socket.io`](htt
 - [x] **S6-T02** Run WiFi-jitter test (~2s TCP drops every 15s) verifying 100% delivery via `CsrReplayLog` / Redis Streams.
 
 ### Group 6B: Long-Running Soak & Hardware Profiling
-- [x] **S6-T03** Execute 72-hour continuous churn soak test verifying flat RSS memory (`jemalloc` vs `ptmalloc2`) and zero leaked tasks.
-- [x] **S6-T04** Profile CPU cache-line contention using `perf c2c` on Linux to confirm zero false sharing across worker cores.
+- [ ] **S6-T03** Execute 72-hour continuous churn soak test verifying flat RSS memory (`jemalloc` vs `ptmalloc2`) and zero leaked tasks (`deploy/soak_and_profile.sh` ready).
+- [ ] **S6-T04** Profile CPU cache-line contention using `perf c2c` on Linux to confirm zero false sharing across worker cores.
 
 ### Group 6C: Production Strangler Fig Migration Playbook
 - [x] **S6-T05** Validate Envoy/NGINX consistent-hash (`sid`) routing + dual-adapter Node.js/Rust Redis bridge in staging.

@@ -112,12 +112,15 @@ impl Default for RecoverySection {
 #[derive(Debug, Clone, Deserialize)]
 pub struct BridgeSection {
     pub broadcast_bind_addr: String,
+    #[serde(default)]
+    pub webhook_url: Option<String>,
 }
 
 impl Default for BridgeSection {
     fn default() -> Self {
         Self {
             broadcast_bind_addr: "127.0.0.1:3001".to_owned(),
+            webhook_url: None,
         }
     }
 }
