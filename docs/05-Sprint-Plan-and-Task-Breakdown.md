@@ -29,9 +29,9 @@ This sprint plan breaks down the redesign and port of [`socketio/socket.io`](htt
 ## Sprint 1: `engineio-core` Live Transports & Adaptive `IoDriver` (Weeks 1–2)
 
 ### Group 1A: Adaptive `IoDriver` & OS Locality
-- [ ] **S1-T01** Define `IoDriver` / `TransportBackend` async trait boundary in `engineio-core` so protocol state never couples directly to `tokio` or `io_uring` buffer lifetimes.
-- [ ] **S1-T02** Implement startup `io_uring_setup` probe with automatic `epoll` (Linux container `seccomp`) and `kqueue` (macOS) fallback.
-- [ ] **S1-T03** Configure `SO_REUSEPORT` per-core listener sockets with CPU thread pinning (`core_affinity`) and `TCP_NOTSENT_LOWAT` (16 KiB).
+- [x] **S1-T01** Define `IoDriver` / `TransportBackend` async trait boundary in `engineio-core` so protocol state never couples directly to `tokio` or `io_uring` buffer lifetimes.
+- [x] **S1-T02** Implement startup `io_uring_setup` probe with automatic `epoll` (Linux container `seccomp`) and `kqueue` (macOS) fallback.
+- [x] **S1-T03** Configure `SO_REUSEPORT` per-core listener sockets with CPU thread pinning (`core_affinity`) and `TCP_NOTSENT_LOWAT` (16 KiB).
 
 ### Group 1B: HTTP Long-Polling Transport (`hyper`)
 - [ ] **S1-T04** Implement `GET /socket.io/?EIO=4&transport=polling` handshake returning `0{"sid":...}` and holding long-running poll response.

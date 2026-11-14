@@ -5,38 +5,14 @@
 //! enforcement (mitigating CVE-2026-59725), constant-time `sid` validation
 //! (mitigating CVE-2026-59724), and explicit write watermarks (128 KiB / 16 KiB).
 
+pub mod driver;
+
+pub use driver::{
+    detect_optimal_driver, AdaptiveDriver, DriverCapabilities, IoDriver, IoDriverKind,
+    SocketTuningProfile,
+};
+
 use std::fmt;
-
-/// Supported OS / kernel I/O driver backends.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IoDriverKind {
-    /// Linux 6.x `io_uring` completion-based thread-per-core ring (with provided buffer rings).
-    IoUringThreadPerCore,
-    /// Linux `epoll` pinned per-core readiness loop (used when container `seccomp` blocks `io_uring`).
-    EpollPinned,
-    /// macOS / BSD `kqueue` readiness loop for local development and testing.
-    Kqueue,
-}
-
-/// Probes the current OS and container runtime to select the optimal `IoDriverKind`
-/// without crashing under restricted Docker/Kubernetes `seccomp` profiles.
-pub fn detect_optimal_driver(prefer_io_uring: bool) -> IoDriverKind {
-    if cfg!(target_os = "macos") || cfg!(target_os = "freebsd") {
-        return IoDriverKind::Kqueue;
-    }
-    if cfg!(target_os = "linux") && prefer_io_uring && is_io_uring_permitted() {
-        return IoDriverKind::IoUringThreadPerCore;
-    }
-    IoDriverKind::EpollPinned
-}
-
-/// Safe user-space check for Linux `io_uring` availability via `/proc/sys/kernel/io_uring_disabled`.
-fn is_io_uring_permitted() -> bool {
-    if let Ok(val) = std::fs::read_to_string("/proc/sys/kernel/io_uring_disabled") {
-        return val.trim() == "0";
-    }
-    false
-}
 
 /// Supported Engine.IO v4 transport protocols.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
