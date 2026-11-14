@@ -27,3 +27,17 @@ fn adversarial_decompression_bomb_blocked() {
     assert!(matches!(err, ParseError::DecompressionBombDetected { .. }));
     assert!(verify_decompression_ratio(10, 2_000, 100).is_err());
 }
+
+#[test]
+fn adversarial_fuzz_decompression_and_zstd_never_panics() {
+    let mut seed: u64 = 0x1337_BEEF_CAFE_0001;
+    for len in 0..256 {
+        let mut buf = Vec::with_capacity(len);
+        for _ in 0..len {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            buf.push((seed >> 56) as u8);
+        }
+        let _ = decompress_bounded(&buf, 4096, 100);
+        let _ = socketio_parser::decompress_zstd_delta(&buf, b"dict", 4096, 100);
+    }
+}

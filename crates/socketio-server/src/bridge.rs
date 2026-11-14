@@ -224,8 +224,27 @@ impl EngineHandler for SocketIoEngineBridge {
         match pkt.packet_type {
             PacketType::Connect => {
                 let ns = pkt.namespace.clone();
-                let auth_req =
-                    serde_json::from_slice::<ConnectAuthPayload>(pkt.payload.as_slice()).ok();
+                let auth_val: serde_json::Value = serde_json::from_slice(pkt.payload.as_slice())
+                    .unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
+                let auth_req = serde_json::from_value::<ConnectAuthPayload>(auth_val.clone()).ok();
+
+                let ns_prefix = if ns == "/" {
+                    String::new()
+                } else {
+                    format!("{ns},")
+                };
+
+                if let Err(reason) = self.io.namespaces.check_middleware(&ns, sid, &auth_val) {
+                    if let Ok(guard) = self.sessions.read() {
+                        if let Some(sess) = guard.get(sid) {
+                            let err_json = serde_json::json!({ "message": reason });
+                            let _ = sess
+                                .raw_outbound
+                                .try_send(format!("44{ns_prefix}{err_json}"));
+                        }
+                    }
+                    return;
+                }
 
                 let recovered_outcome = auth_req
                     .as_ref()
@@ -259,12 +278,6 @@ impl EngineHandler for SocketIoEngineBridge {
                     );
                     sess.sockets_by_ns.insert(ns.clone(), sock.clone());
                     (sock, sess.raw_outbound.clone(), sess.pid.clone())
-                };
-
-                let ns_prefix = if ns == "/" {
-                    String::new()
-                } else {
-                    format!("{ns},")
                 };
 
                 let connect_ack = if self.recovery.is_some() {
@@ -366,6 +379,7 @@ impl EngineHandler for SocketIoEngineBridge {
                 }
             }
             self.io.rooms.unregister_socket(sid);
+            self.io.presence.untrack_socket_all(sid);
             if let Some(ref rec) = self.recovery {
                 rec.save_snapshot(SessionRecoverySnapshot {
                     pid: sess.pid,

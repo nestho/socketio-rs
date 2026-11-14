@@ -297,6 +297,21 @@ async fn main() {
                                         met_inner.broadcasts_total.get(),
                                     ))))
                                     .unwrap_or_else(|_| Response::new(Full::new(Bytes::new()))),
+                                (&Method::GET, "/_presence") => {
+                                    let room = req
+                                        .uri()
+                                        .query()
+                                        .and_then(|q| engineio_core::extract_query_param(q, "room"))
+                                        .unwrap_or("");
+                                    let members = io_inner.presence.list(room);
+                                    let json = serde_json::to_string(&members)
+                                        .unwrap_or_else(|_| "[]".to_owned());
+                                    Response::builder()
+                                        .status(StatusCode::OK)
+                                        .header("Content-Type", "application/json")
+                                        .body(Full::new(Bytes::from(json)))
+                                        .unwrap_or_else(|_| Response::new(Full::new(Bytes::new())))
+                                }
                                 (&Method::GET, "/metrics") => Response::builder()
                                     .status(StatusCode::OK)
                                     .header("Content-Type", "text/plain; version=0.0.4")

@@ -402,12 +402,15 @@ impl SocketRef {
 }
 
 pub type ConnectHandler = Arc<dyn Fn(SocketRef) + Send + Sync>;
+pub type NamespaceMiddleware =
+    Arc<dyn Fn(&str, &serde_json::Value) -> Result<(), String> + Send + Sync>;
 
-/// Static and dynamic-prefix Namespace registry (`S2-T05`).
+/// Static and dynamic-prefix Namespace registry (`S2-T05`) with `io.use(...)` middleware.
 #[derive(Default)]
 pub struct NamespaceRegistry {
     exact: RwLock<HashMap<String, ConnectHandler>>,
     prefixes: RwLock<Vec<(String, ConnectHandler)>>,
+    middlewares: RwLock<HashMap<String, Vec<NamespaceMiddleware>>>,
 }
 
 impl NamespaceRegistry {
@@ -421,6 +424,30 @@ impl NamespaceRegistry {
         if let Ok(mut guard) = self.prefixes.write() {
             guard.push((prefix.into(), handler));
         }
+    }
+
+    pub fn register_middleware(&self, ns: impl Into<String>, mw: NamespaceMiddleware) {
+        if let Ok(mut guard) = self.middlewares.write() {
+            guard.entry(ns.into()).or_default().push(mw);
+        }
+    }
+
+    pub fn check_middleware(
+        &self,
+        ns: &str,
+        sid: &str,
+        auth: &serde_json::Value,
+    ) -> Result<(), String> {
+        let list = self
+            .middlewares
+            .read()
+            .ok()
+            .and_then(|g| g.get(ns).cloned())
+            .unwrap_or_default();
+        for mw in list {
+            mw(sid, auth)?;
+        }
+        Ok(())
     }
 
     pub fn resolve(&self, ns: &str) -> Option<ConnectHandler> {
@@ -444,6 +471,7 @@ impl NamespaceRegistry {
 pub struct SocketIo {
     pub rooms: Arc<ShardedRoomIndex>,
     pub namespaces: Arc<NamespaceRegistry>,
+    pub presence: Arc<crate::presence::PresenceRegistry>,
 }
 
 impl SocketIo {
@@ -451,6 +479,7 @@ impl SocketIo {
         Self {
             rooms: Arc::new(ShardedRoomIndex::new(shard_count)),
             namespaces: Arc::new(NamespaceRegistry::default()),
+            presence: Arc::new(crate::presence::PresenceRegistry::new()),
         }
     }
 
@@ -466,6 +495,14 @@ impl SocketIo {
         F: Fn(SocketRef) + Send + Sync + 'static,
     {
         self.namespaces.register_prefix(prefix, Arc::new(handler));
+    }
+
+    /// Registers a handshake middleware (`io.of(ns).use((socket, next) => ...)`).
+    pub fn use_ns<F>(&self, path: &str, mw: F)
+    where
+        F: Fn(&str, &serde_json::Value) -> Result<(), String> + Send + Sync + 'static,
+    {
+        self.namespaces.register_middleware(path, Arc::new(mw));
     }
 
     pub fn to(&self, room: impl Into<String>) -> BroadcastOperator {

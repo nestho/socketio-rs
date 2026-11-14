@@ -181,3 +181,38 @@ async fn live_on_any_outgoing_observes_emitted_frames() {
         vec!["2[\"welcome\",\"hi\"]".to_owned()]
     );
 }
+
+#[tokio::test]
+async fn live_namespace_middleware_rejects_unauthorized_with_44_connect_error() {
+    let io = Arc::new(SocketIo::new(4));
+    io.use_ns("/admin", |_sid, auth| {
+        if auth.get("token").and_then(|v| v.as_str()) == Some("secret-ok") {
+            Ok(())
+        } else {
+            Err("unauthorized".to_owned())
+        }
+    });
+    io.ns("/admin", |socket| {
+        socket.emit("admin_ready", &true);
+    });
+
+    let bridge = SocketIoEngineBridge::new(Arc::clone(&io));
+
+    // 1. Unauthorized attempt -> expects 44/admin,{"message":"unauthorized"}
+    let (tx1, mut rx1) = mpsc::channel::<String>(8);
+    let sid1 = "FSDjX-WRwSA4zTZMALa1";
+    bridge.on_open(sid1, tx1);
+    bridge.on_message(sid1, "0/admin,{\"token\":\"bad\"}");
+    let err_frame = rx1.recv().await.unwrap();
+    assert_eq!(err_frame, "44/admin,{\"message\":\"unauthorized\"}");
+
+    // 2. Authorized attempt -> expects 40/admin,{"sid":...} + admin_ready
+    let (tx2, mut rx2) = mpsc::channel::<String>(8);
+    let sid2 = "FSDjX-WRwSA4zTZMALa2";
+    bridge.on_open(sid2, tx2);
+    bridge.on_message(sid2, "0/admin,{\"token\":\"secret-ok\"}");
+    let ok_frame = rx2.recv().await.unwrap();
+    assert_eq!(ok_frame, format!("40/admin,{{\"sid\":\"{sid2}\"}}"));
+    let ready_frame = rx2.recv().await.unwrap();
+    assert_eq!(ready_frame, "42/admin,[\"admin_ready\",true]");
+}
