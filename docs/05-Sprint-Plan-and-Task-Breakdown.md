@@ -39,9 +39,9 @@ This sprint plan breaks down the redesign and port of [`socketio/socket.io`](htt
 - [x] **S1-T06** Enforce strict per-IP/per-SID HTTP request timeouts and automatic session cleanup on aborted HTTP responses (mitigating CVE-2026-59725).
 
 ### Group 1C: WebSocket Transport & Upgrade FSM
-- [ ] **S1-T07** Integrate `tokio-tungstenite` for RFC 6455 WebSocket upgrade handling on `/socket.io/?EIO=4&transport=websocket&sid=...`.
-- [ ] **S1-T08** Implement the Engine.IO v4 upgrade state machine (`2probe` -> `3probe` -> `5` upgrade -> close polling cleanly).
-- [ ] **S1-T09** Implement `pingInterval` (25s) / `pingTimeout` (20s) heartbeat timer wheel and `WriteWatermarkController` (128 KiB high / 16 KiB low) slow-consumer eviction.
+- [x] **S1-T07** Integrate `tokio-tungstenite` for RFC 6455 WebSocket upgrade handling on `/socket.io/?EIO=4&transport=websocket&sid=...`.
+- [x] **S1-T08** Implement the Engine.IO v4 upgrade state machine (`2probe` -> `3probe` -> `5` upgrade -> close polling cleanly).
+- [x] **S1-T09** Implement `pingInterval` (25s) / `pingTimeout` (20s) heartbeat timer wheel and `WriteWatermarkController` (128 KiB high / 16 KiB low) slow-consumer eviction.
 
 ---
 
