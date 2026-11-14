@@ -132,6 +132,22 @@ impl SocketIoEngineBridge {
         }
     }
 
+    /// Server-initiated disconnect (`socket.disconnect(true)` / `/_disconnect` control API).
+    pub fn disconnect_socket(&self, sid: &str) -> bool {
+        let raw_out = self
+            .sessions
+            .read()
+            .ok()
+            .and_then(|g| g.get(sid).map(|s| s.raw_outbound.clone()));
+        if let Some(tx) = raw_out {
+            let _ = tx.try_send("41".to_owned());
+            self.on_close(sid);
+            true
+        } else {
+            false
+        }
+    }
+
     fn dispatch_event(&self, sid: &str, pkt: SocketIoPacket, binaries: Vec<SharedBytes>) {
         let Ok((event_name, _data)) = parse_dynamic_event(pkt.payload.as_slice()) else {
             return;

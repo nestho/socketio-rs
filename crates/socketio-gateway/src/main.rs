@@ -39,6 +39,17 @@ struct BroadcastPayload {
     data: serde_json::Value,
 }
 
+#[derive(Debug, Deserialize)]
+struct RoomMembershipPayload {
+    sid: String,
+    room: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DisconnectPayload {
+    sid: String,
+}
+
 fn default_ns() -> String {
     "/".to_owned()
 }
@@ -416,6 +427,77 @@ async fn main() {
                                         .status(StatusCode::OK)
                                         .body(Full::new(Bytes::from(format!(
                                             "{{\"delivered\":{delivered}}}"
+                                        ))))
+                                        .unwrap()
+                                }
+                                (&Method::POST, "/_rooms/join") => {
+                                    let Ok(collected) = req.into_body().collect().await else {
+                                        return Ok::<_, std::convert::Infallible>(
+                                            Response::builder()
+                                                .status(StatusCode::BAD_REQUEST)
+                                                .body(Full::new(Bytes::from_static(b"invalid body")))
+                                                .unwrap(),
+                                        );
+                                    };
+                                    let Ok(p) = serde_json::from_slice::<RoomMembershipPayload>(
+                                        &collected.to_bytes(),
+                                    ) else {
+                                        return Ok(Response::builder()
+                                            .status(StatusCode::BAD_REQUEST)
+                                            .body(Full::new(Bytes::from_static(b"invalid json")))
+                                            .unwrap());
+                                    };
+                                    io_inner.rooms.join(&p.room, &p.sid);
+                                    Response::builder()
+                                        .status(StatusCode::OK)
+                                        .body(Full::new(Bytes::from_static(b"{\"ok\":true}")))
+                                        .unwrap()
+                                }
+                                (&Method::POST, "/_rooms/leave") => {
+                                    let Ok(collected) = req.into_body().collect().await else {
+                                        return Ok::<_, std::convert::Infallible>(
+                                            Response::builder()
+                                                .status(StatusCode::BAD_REQUEST)
+                                                .body(Full::new(Bytes::from_static(b"invalid body")))
+                                                .unwrap(),
+                                        );
+                                    };
+                                    let Ok(p) = serde_json::from_slice::<RoomMembershipPayload>(
+                                        &collected.to_bytes(),
+                                    ) else {
+                                        return Ok(Response::builder()
+                                            .status(StatusCode::BAD_REQUEST)
+                                            .body(Full::new(Bytes::from_static(b"invalid json")))
+                                            .unwrap());
+                                    };
+                                    io_inner.rooms.leave(&p.room, &p.sid);
+                                    Response::builder()
+                                        .status(StatusCode::OK)
+                                        .body(Full::new(Bytes::from_static(b"{\"ok\":true}")))
+                                        .unwrap()
+                                }
+                                (&Method::POST, "/_disconnect") => {
+                                    let Ok(collected) = req.into_body().collect().await else {
+                                        return Ok::<_, std::convert::Infallible>(
+                                            Response::builder()
+                                                .status(StatusCode::BAD_REQUEST)
+                                                .body(Full::new(Bytes::from_static(b"invalid body")))
+                                                .unwrap(),
+                                        );
+                                    };
+                                    let Ok(p) = serde_json::from_slice::<DisconnectPayload>(
+                                        &collected.to_bytes(),
+                                    ) else {
+                                        return Ok(Response::builder()
+                                            .status(StatusCode::BAD_REQUEST)
+                                            .body(Full::new(Bytes::from_static(b"invalid json")))
+                                            .unwrap());
+                                    };
+                                    let disconnected = bs_inner.disconnect_socket(&p.sid);
+                                    Response::builder()
+                                        .status(StatusCode::OK)
+                                        .body(Full::new(Bytes::from(format!(
+                                            "{{\"disconnected\":{disconnected}}}"
                                         ))))
                                         .unwrap()
                                 }

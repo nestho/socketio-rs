@@ -485,3 +485,28 @@ async fn e2e_cors_options_preflight_returns_204_with_credentials() {
     assert!(resp.to_lowercase().contains("access-control-allow-origin: https://app.example.com"));
     assert!(resp.to_lowercase().contains("access-control-allow-credentials: true"));
 }
+
+#[tokio::test]
+async fn e2e_polyglot_room_join_leave_and_disconnect_control_api() {
+    let io = Arc::new(SocketIo::new(4));
+    let bridge = SocketIoEngineBridge::new(Arc::clone(&io));
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(16);
+    let sid = "FSDjX-WRwSA4zTZMALp1";
+    bridge.on_open(sid, tx);
+    bridge.on_message(sid, "0");
+    let _ack = rx.recv().await.unwrap();
+
+    // Join room via ShardedRoomIndex (/_rooms/join)
+    io.rooms.join("chat:room-9", sid);
+    assert_eq!(io.rooms.rooms_for_socket(sid), vec!["chat:room-9".to_owned()]);
+
+    // Leave room (/_rooms/leave) -> empty room pruned
+    io.rooms.leave("chat:room-9", sid);
+    assert_eq!(io.rooms.active_room_count(), 0);
+
+    // Server-initiated disconnect (/_disconnect) -> sends 41 and cleans up session
+    assert!(bridge.disconnect_socket(sid));
+    let disc = rx.recv().await.unwrap();
+    assert_eq!(disc, "41");
+    assert_eq!(bridge.active_session_count(), 0);
+}
