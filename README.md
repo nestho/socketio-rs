@@ -26,21 +26,21 @@ For developer setup, build commands, kernel tuning, and phase-by-phase workflow 
 | `engineio-core` | [`crates/engineio-core`](./crates/engineio-core) | Adaptive `IoDriver` (`io_uring` bare-metal probe + `epoll` container `seccomp` fallback), Engine.IO v4 session FSM, heartbeat timers, streaming `maxPayload` guard, and write watermarks (128 KiB / 16 KiB). |
 | `socketio-parser` | [`crates/socketio-parser`](./crates/socketio-parser) | Zero-copy `bytes::Bytes` framing for Engine.IO v4 and Socket.IO v5 packets (JSON + MsgPack + binary attachments) with decompression-bomb ratio enforcement. |
 | `socketio-server` | [`crates/socketio-server`](./crates/socketio-server) | Multiplexed namespaces, Discord-style sharded lock-free room router, `#[repr(align(64))]` cache-line padded counters, CSWSH `Origin` guard, and ergonomic handler API. |
-| `socketio-adapters` | [`crates/socketio-adapters`](./crates/socketio-adapters) | Pluggable horizontal scaling & durable CSR (`pid` + monotonic offset replay) trait with In-Memory ring-buffer and distributed adapter stubs (Redis/Valkey Streams, NATS JetStream, PostgreSQL). |
-| `socketio-gateway` | [`crates/socketio-gateway`](./crates/socketio-gateway) | Standalone polyglot edge gateway binary (`tikv-jemallocator` ready) allowing Node.js/Python/Go backends to offload 1M+ connections without rewriting business logic. |
-| `sio-migrate-cli` | [`crates/sio-migrate-cli`](./crates/sio-migrate-cli) | Automated Node.js/TypeScript Socket.IO repository scanner and migration assistant CLI (`sio-migrate`) for readiness scoring, ROI estimation, and sidecar/Rust handler scaffolding. |
+| `socketio-adapters` | [`crates/socketio-adapters`](./crates/socketio-adapters) | Pluggable horizontal scaling & durable CSR (`pid` + monotonic offset replay) with `LiveRedisStreamsAdapter` (`redis`), `LiveNatsJetStreamAdapter` (`async-nats`), and `LivePostgresAdapter` (`tokio-postgres`). |
+| `socketio-gateway` | [`crates/socketio-gateway`](./crates/socketio-gateway) | Standalone polyglot edge gateway binary (`tikv-jemallocator` ready) with multi-shard `SO_REUSEPORT` acceptors, HTTP/3 WebTransport (`--webtransport-bind`), `/_broadcast`, and `/metrics`. |
+| `sio-migrate-cli` | [`crates/sio-migrate-cli`](./crates/sio-migrate-cli) | Automated Node.js/TypeScript Socket.IO repository lexer/analyzer and migration assistant CLI (`sio-migrate --scan --scaffold --json`). |
 
 ## Quick Start
 
 ```bash
-# 1. Verify workspace compilation and run all unit tests
-cargo test --workspace
+# 1. Verify workspace compilation and run all 48 tests
+cargo test --workspace --target-dir /tmp/socketio-rs-target
 
-# 2. Run the standalone polyglot gateway binary
-cargo run -p socketio-gateway -- --config gateway.toml
+# 2. Run the standalone polyglot gateway binary (HTTP/WS + HTTP/3 WebTransport)
+cargo run -p socketio-gateway -- --serve --bind 127.0.0.1:3000 --webtransport-bind 127.0.0.1:3443
 
-# 3. Run the automated migration analyzer against a project directory
-cargo run -p sio-migrate-cli -- scan --path .
+# 3. Run the automated migration analyzer and scaffolder against a Node.js project
+cargo run -p sio-migrate-cli -- --scan /path/to/node-app --scaffold ./out
 ```
 
 ## License

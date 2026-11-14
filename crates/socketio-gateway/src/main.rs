@@ -198,20 +198,28 @@ async fn main() {
         println!("  Edge Socket.IO Listening : http://{edge_addr}{mount_prefix}/");
         println!("  Control/Broadcast API    : http://{bridge_addr}/_broadcast");
 
-        match gw_cfg.recovery.adapter.as_str() {
+        let active_adapter: Option<Arc<dyn socketio_adapters::Adapter>> = match gw_cfg
+            .recovery
+            .adapter
+            .as_str()
+        {
             "redis" => {
                 let redis_url = std::env::var("REDIS_URL")
                     .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
-                if let Ok(redis_adapter) = socketio_adapters::LiveRedisStreamsAdapter::connect(
+                match socketio_adapters::LiveRedisStreamsAdapter::connect(
                     format!("gateway-{}", std::process::id()),
                     "sio:cluster:stream",
                     &redis_url,
                 ) {
-                    let io_cluster = Arc::clone(&io);
-                    redis_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
-                        let _ = io_cluster.handle_cluster_packet(pkt);
-                    }));
-                    println!("  Redis Cluster Subscriber : active ({redis_url})");
+                    Ok(redis_adapter) => {
+                        let io_cluster = Arc::clone(&io);
+                        redis_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
+                            let _ = io_cluster.handle_cluster_packet(pkt);
+                        }));
+                        println!("  Redis Cluster Subscriber : active ({redis_url})");
+                        Some(Arc::new(redis_adapter) as Arc<dyn socketio_adapters::Adapter>)
+                    }
+                    Err(_) => None,
                 }
             }
             "nats" => {
@@ -227,6 +235,7 @@ async fn main() {
                     let _ = io_cluster.handle_cluster_packet(pkt);
                 }));
                 println!("  NATS Cluster Subscriber  : active ({nats_url})");
+                Some(Arc::new(nats_adapter) as Arc<dyn socketio_adapters::Adapter>)
             }
             "postgres" => {
                 let pg_url = std::env::var("DATABASE_URL")
@@ -241,13 +250,15 @@ async fn main() {
                     let _ = io_cluster.handle_cluster_packet(pkt);
                 }));
                 println!("  Postgres LISTEN Sub      : active");
+                Some(Arc::new(pg_adapter) as Arc<dyn socketio_adapters::Adapter>)
             }
-            _ => {}
-        }
+            _ => None,
+        };
 
         let io_bridge = Arc::clone(&io);
         let rec_bridge = Arc::clone(&recovery);
         let met_bridge = Arc::clone(&metrics);
+        let adapter_bridge = active_adapter.clone();
         tokio::spawn(async move {
             loop {
                 let Ok((stream, _)) = bridge_listener.accept().await else {
@@ -256,11 +267,13 @@ async fn main() {
                 let io_c = Arc::clone(&io_bridge);
                 let rec_c = Arc::clone(&rec_bridge);
                 let met_c = Arc::clone(&met_bridge);
+                let adp_c = adapter_bridge.clone();
                 tokio::spawn(async move {
                     let svc = service_fn(move |req: http::Request<hyper::body::Incoming>| {
                         let io_inner = Arc::clone(&io_c);
                         let rec_inner = Arc::clone(&rec_c);
                         let met_inner = Arc::clone(&met_c);
+                        let adp_inner = adp_c.clone();
                         async move {
                             let resp = match (req.method(), req.uri().path()) {
                                 (&Method::GET, "/metrics") => Response::builder()
@@ -289,13 +302,25 @@ async fn main() {
                                         .unwrap_or_else(|_| socketio_parser::SharedBytes::from_slice(b"[]"));
                                     let frame = encode_v5_packet(&SocketIoPacket {
                                         packet_type: PacketType::Event,
-                                        namespace: b.namespace,
+                                        namespace: b.namespace.clone(),
                                         ack_id: None,
                                         attachments: 0,
                                         payload,
                                     });
                                     let delivered = io_inner.rooms.broadcast_zero_copy(&b.room, &frame);
-                                    rec_inner.record_outbound(&b.room, frame, 0);
+                                    rec_inner.record_outbound(&b.room, frame.clone(), 0);
+                                    if let Some(ref adp) = adp_inner {
+                                        let adp_bg = Arc::clone(adp);
+                                        let opts = socketio_adapters::BroadcastOptions {
+                                            namespace: b.namespace,
+                                            rooms: vec![b.room],
+                                            except: Vec::new(),
+                                            local_only: false,
+                                        };
+                                        tokio::spawn(async move {
+                                            let _ = adp_bg.broadcast(opts, frame).await;
+                                        });
+                                    }
                                     met_inner.broadcasts_total.inc();
                                     Response::builder()
                                         .status(StatusCode::OK)
@@ -320,10 +345,14 @@ async fn main() {
         });
 
         let drain_ms = gw_cfg.server.shutdown_drain_timeout_ms;
+        let allowed_origins = Arc::new(gw_cfg.security.allowed_origins.clone());
+        let require_origin = gw_cfg.security.require_origin_header;
         for edge_listener in edge_listeners {
             let store_shard = store.clone();
             let bridge_shard = Arc::clone(&bridge);
             let prefix_shard = mount_prefix.clone();
+            let origins_shard = Arc::clone(&allowed_origins);
+            let met_shard = Arc::clone(&metrics);
             tokio::spawn(async move {
                 loop {
                     let Ok((stream, _peer)) = edge_listener.accept().await else {
@@ -334,14 +363,22 @@ async fn main() {
                     let bridge_clone: Arc<dyn engineio_core::EngineHandler> =
                         Arc::clone(&bridge_shard) as Arc<dyn engineio_core::EngineHandler>;
                     let prefix_outer = prefix_shard.clone();
+                    let origins_outer = Arc::clone(&origins_shard);
+                    let met_outer = Arc::clone(&met_shard);
                     tokio::spawn(async move {
                         let svc = service_fn(move |req| {
                             let s = store_clone.clone();
                             let b = Arc::clone(&bridge_clone);
                             let p = prefix_outer.clone();
+                            let origs = Arc::clone(&origins_outer);
+                            let met = Arc::clone(&met_outer);
                             async move {
                                 let req_path = req.uri().path();
                                 let client_js_path = format!("{p}/socket.io.js");
+                                let origin_hdr = req
+                                    .headers()
+                                    .get(http::header::ORIGIN)
+                                    .and_then(|v| v.to_str().ok());
                                 let resp = if req_path == client_js_path {
                                     Response::builder()
                                         .status(StatusCode::OK)
@@ -352,7 +389,19 @@ async fn main() {
                                         )))
                                         .unwrap_or_else(|_| Response::new(Full::new(Bytes::new())))
                                 } else if req_path.starts_with(p.as_str()) {
-                                    if is_websocket_upgrade(&req) {
+                                    if !socketio_server::validate_origin(
+                                        origin_hdr,
+                                        &origs,
+                                        require_origin,
+                                    ) {
+                                        met.cswsh_rejections_total.inc();
+                                        Response::builder()
+                                            .status(StatusCode::FORBIDDEN)
+                                            .body(Full::new(Bytes::from_static(b"Forbidden Origin")))
+                                            .unwrap_or_else(|_| {
+                                                Response::new(Full::new(Bytes::new()))
+                                            })
+                                    } else if is_websocket_upgrade(&req) {
                                         handle_websocket_upgrade(req, s, Some(b)).await
                                     } else {
                                         handle_polling_request(req, s, Some(b)).await

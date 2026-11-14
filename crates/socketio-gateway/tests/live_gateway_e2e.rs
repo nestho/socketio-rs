@@ -342,3 +342,47 @@ async fn e2e_polling_to_websocket_2probe_3probe_5_upgrade_and_ack() {
     let _ = ws.close(None).await;
     server_task.abort();
 }
+
+#[tokio::test]
+async fn e2e_cswsh_origin_policy_rejects_disallowed_origin_with_403() {
+    let allowed = vec!["https://trusted.example.com".to_owned()];
+    let (mut client_io, server_io) = tokio::io::duplex(16_384);
+
+    let server_task = tokio::spawn(async move {
+        let svc = service_fn(move |req: http::Request<hyper::body::Incoming>| {
+            let allowed_c = allowed.clone();
+            async move {
+                let origin = req
+                    .headers()
+                    .get(http::header::ORIGIN)
+                    .and_then(|v| v.to_str().ok());
+                let resp = if !validate_origin(origin, &allowed_c, true) {
+                    Response::builder()
+                        .status(StatusCode::FORBIDDEN)
+                        .body(Full::new(Bytes::from_static(b"Forbidden Origin")))
+                        .unwrap()
+                } else {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .body(Full::new(Bytes::from_static(b"ok")))
+                        .unwrap()
+                };
+                Ok::<_, std::convert::Infallible>(resp)
+            }
+        });
+        let _ = hyper::server::conn::http1::Builder::new()
+            .keep_alive(false)
+            .serve_connection(TokioIo::new(server_io), svc)
+            .await;
+    });
+
+    let bad_req = "GET /socket.io/?EIO=4&transport=polling HTTP/1.1\r\nHost: localhost\r\nOrigin: https://evil.attacker.com\r\nConnection: close\r\n\r\n";
+    client_io.write_all(bad_req.as_bytes()).await.unwrap();
+    client_io.flush().await.unwrap();
+
+    let mut resp_bytes = Vec::new();
+    client_io.read_to_end(&mut resp_bytes).await.unwrap();
+    let _ = server_task.await;
+    let resp_str = String::from_utf8_lossy(&resp_bytes);
+    assert!(resp_str.contains("403 Forbidden"));
+}

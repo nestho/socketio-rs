@@ -9,6 +9,7 @@ pub struct GatewayMetrics {
     pub broadcasts_total: CacheLinePaddedCounter,
     pub dropped_slow_consumers_total: CacheLinePaddedCounter,
     pub recovered_sessions_total: CacheLinePaddedCounter,
+    pub cswsh_rejections_total: CacheLinePaddedCounter,
 }
 
 impl GatewayMetrics {
@@ -29,11 +30,15 @@ impl GatewayMetrics {
              socketio_rs_dropped_slow_consumers_total {}\n\
              # HELP socketio_rs_recovered_sessions_total Sessions restored via Connection State Recovery\n\
              # TYPE socketio_rs_recovered_sessions_total counter\n\
-             socketio_rs_recovered_sessions_total {}\n",
+             socketio_rs_recovered_sessions_total {}\n\
+             # HELP socketio_rs_cswsh_rejections_total Requests rejected by CSWSH Origin policy\n\
+             # TYPE socketio_rs_cswsh_rejections_total counter\n\
+             socketio_rs_cswsh_rejections_total {}\n",
             self.active_connections.get(),
             self.broadcasts_total.get(),
             self.dropped_slow_consumers_total.get(),
             self.recovered_sessions_total.get(),
+            self.cswsh_rejections_total.get(),
         )
     }
 }
