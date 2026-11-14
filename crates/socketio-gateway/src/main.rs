@@ -161,6 +161,16 @@ async fn main() {
                 let wt_addr: SocketAddr = wt_bind[1]
                     .parse()
                     .expect("valid --webtransport-bind SocketAddr");
+                let wt_tls = engineio_core::WebTransportTlsConfig {
+                    cert_pem_path: args
+                        .windows(2)
+                        .find(|w| w[0] == "--wt-cert")
+                        .map(|w| std::path::PathBuf::from(&w[1])),
+                    key_pem_path: args
+                        .windows(2)
+                        .find(|w| w[0] == "--wt-key")
+                        .map(|w| std::path::PathBuf::from(&w[1])),
+                };
                 let wt_cfg_engine = engine_cfg.clone();
                 let wt_handler: Arc<dyn engineio_core::EngineHandler> =
                     Arc::clone(&bridge) as Arc<dyn engineio_core::EngineHandler>;
@@ -170,6 +180,7 @@ async fn main() {
                         wt_addr,
                         wt_cfg_engine,
                         Some(wt_handler),
+                        wt_tls,
                     )
                     .await
                     {
@@ -275,7 +286,18 @@ async fn main() {
                             let b = Arc::clone(&bridge_clone);
                             let p = prefix_outer.clone();
                             async move {
-                                let resp = if req.uri().path().starts_with(p.as_str()) {
+                                let req_path = req.uri().path();
+                                let client_js_path = format!("{p}/socket.io.js");
+                                let resp = if req_path == client_js_path {
+                                    Response::builder()
+                                        .status(StatusCode::OK)
+                                        .header("Content-Type", "application/javascript; charset=utf-8")
+                                        .header("Cache-Control", "public, max-age=86400")
+                                        .body(Full::new(Bytes::from_static(
+                                            b"/* socketio-rs serveClient shim: import { io } from 'https://cdn.socket.io/4.8.1/socket.io.esm.min.js'; */\nconsole.info('socketio-rs gateway active; use socket.io-client@4.x');\n",
+                                        )))
+                                        .unwrap_or_else(|_| Response::new(Full::new(Bytes::new())))
+                                } else if req_path.starts_with(p.as_str()) {
                                     if is_websocket_upgrade(&req) {
                                         handle_websocket_upgrade(req, s, Some(b)).await
                                     } else {

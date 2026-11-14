@@ -4,6 +4,10 @@
 //! scaling adapters (Redis/Valkey Streams, NATS JetStream, PostgreSQL).
 
 pub mod adapter;
+#[cfg(feature = "nats-adapter")]
+pub mod nats_live;
+#[cfg(feature = "postgres-adapter")]
+pub mod postgres_live;
 pub mod recovery;
 #[cfg(feature = "redis-adapter")]
 pub mod redis_live;
@@ -17,9 +21,15 @@ pub use adapter::NatsJetStreamAdapter;
 pub use adapter::PostgresAdapter;
 #[cfg(feature = "redis-adapter")]
 pub use adapter::RedisStreamsAdapter;
+#[cfg(feature = "nats-adapter")]
+pub use nats_live::LiveNatsJetStreamAdapter;
+#[cfg(feature = "postgres-adapter")]
+pub use postgres_live::LivePostgresAdapter;
 #[cfg(feature = "redis-adapter")]
 pub use redis_live::LiveRedisStreamsAdapter;
-pub use recovery::{RecoveryManager, RecoveryOutcome, SessionRecoverySnapshot};
+pub use recovery::{
+    CsrSnapshotStore, RecoveryManager, RecoveryOutcome, SessionRecoverySnapshot,
+};
 
 use socketio_parser::SharedBytes;
 use std::collections::VecDeque;

@@ -67,15 +67,28 @@ impl WebTransportSessionGuard {
     }
 }
 
+/// Optional PEM certificate + private key paths for HTTP/3 WebTransport TLS.
+#[derive(Debug, Clone, Default)]
+pub struct WebTransportTlsConfig {
+    pub cert_pem_path: Option<std::path::PathBuf>,
+    pub key_pem_path: Option<std::path::PathBuf>,
+}
+
 /// Starts a live HTTP/3 WebTransport (`wtransport` / `quinn`) server endpoint
 /// listening for Engine.IO v4 bidirectional streams (`S4-T01`, `S4-T02`).
 pub async fn serve_webtransport_endpoint(
     bind_addr: SocketAddr,
     engine_cfg: EngineConfig,
     handler: Option<Arc<dyn EngineHandler>>,
+    tls_cfg: WebTransportTlsConfig,
 ) -> Result<(), std::io::Error> {
-    let identity = Identity::self_signed(["localhost", "127.0.0.1"])
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+    let identity = match (tls_cfg.cert_pem_path, tls_cfg.key_pem_path) {
+        (Some(cert), Some(key)) => Identity::load_pemfiles(&cert, &key)
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?,
+        _ => Identity::self_signed(["localhost", "127.0.0.1"])
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
+    };
 
     let wt_server_cfg = ServerConfig::builder()
         .with_bind_address(bind_addr)

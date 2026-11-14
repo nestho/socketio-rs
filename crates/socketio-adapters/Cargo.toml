@@ -12,9 +12,12 @@ nats-adapter = []
 postgres-adapter = []
 
 [dependencies]
+async-nats = "0.38"
+bytes.workspace = true
 redis.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-postgres = "0.7"
 socketio-parser.workspace = true

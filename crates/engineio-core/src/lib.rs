@@ -22,7 +22,7 @@ pub use polling::{
 };
 pub use webtransport::{
     compute_jittered_duration_ms, serve_webtransport_endpoint, WebTransportConfig,
-    WebTransportSessionGuard,
+    WebTransportSessionGuard, WebTransportTlsConfig,
 };
 pub use ws::{handle_websocket_upgrade, is_websocket_upgrade, UpgradeFsm};
 
