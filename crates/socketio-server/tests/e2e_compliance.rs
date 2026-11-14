@@ -22,7 +22,9 @@ async fn e2e_engineio_v4_handshake_upgrade_and_socketio_v5_multiplexing() {
         ping_timeout: cfg.ping_timeout_ms,
         max_payload: cfg.max_payload_bytes,
     };
-    assert!(hs.to_engineio_open_frame().starts_with("0{\"sid\":\"FSDjX-WRwSA4zTZMALqx\""));
+    assert!(hs
+        .to_engineio_open_frame()
+        .starts_with("0{\"sid\":\"FSDjX-WRwSA4zTZMALqx\""));
 
     // 2. Engine.IO v4 Polling -> WebSocket Probe & Commit FSM
     let mut fsm = UpgradeFsm::new_upgrading_from_polling();

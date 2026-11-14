@@ -99,8 +99,8 @@ pub async fn serve_webtransport_endpoint(
         .with_identity(identity)
         .build();
 
-    let endpoint = Endpoint::server(wt_server_cfg)
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let endpoint =
+        Endpoint::server(wt_server_cfg).map_err(|e| std::io::Error::other(e.to_string()))?;
 
     loop {
         let incoming = endpoint.accept().await;

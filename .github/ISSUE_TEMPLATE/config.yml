@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability Reporting
+    url: https://github.com/nestho/socketio-rs/security/policy
+    about: Please report security vulnerabilities privately according to SECURITY.md
+  - name: Architecture & Developer Documentation
+    url: https://github.com/nestho/socketio-rs/blob/main/docs/README.md
+    about: Explore HLD, guides, and developer documentation

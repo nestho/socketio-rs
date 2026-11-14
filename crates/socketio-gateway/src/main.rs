@@ -167,15 +167,24 @@ async fn main() {
         "  WebTransport (HTTP/3)    : enabled={}, max_bidi_streams={}",
         gw_cfg.engine.enable_webtransport_h3, wt_cfg.max_concurrent_bidi_streams
     );
-    println!("  Detected Worker Shards   : {} (64-byte cache-line aligned)", cores);
+    println!(
+        "  Detected Worker Shards   : {} (64-byte cache-line aligned)",
+        cores
+    );
     println!(
         "  Write Watermarks         : {} KiB high / {} KiB low",
         engine_cfg.write_high_watermark_bytes / 1024,
         engine_cfg.write_low_watermark_bytes / 1024
     );
     println!("  CSR Adapter Mode         : {}", gw_cfg.recovery.adapter);
-    println!("  Broadcast Bridge Addr    : http://{}/_broadcast", gw_cfg.bridge.broadcast_bind_addr);
-    println!("  Prometheus Metrics       : http://{}/metrics", gw_cfg.bridge.broadcast_bind_addr);
+    println!(
+        "  Broadcast Bridge Addr    : http://{}/_broadcast",
+        gw_cfg.bridge.broadcast_bind_addr
+    );
+    println!(
+        "  Prometheus Metrics       : http://{}/metrics",
+        gw_cfg.bridge.broadcast_bind_addr
+    );
     println!("==============================================================");
 
     if args.iter().any(|a| a == "--serve") {
@@ -307,62 +316,59 @@ async fn main() {
         println!("  Edge Socket.IO Listening : http://{edge_addr}{mount_prefix}/");
         println!("  Control/Broadcast API    : http://{bridge_addr}/_broadcast");
 
-        let active_adapter: Option<Arc<dyn socketio_adapters::Adapter>> = match gw_cfg
-            .recovery
-            .adapter
-            .as_str()
-        {
-            "redis" | "redis_streams" => {
-                let redis_url = std::env::var("REDIS_URL")
-                    .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
-                match socketio_adapters::LiveRedisStreamsAdapter::connect(
-                    format!("gateway-{}", std::process::id()),
-                    "sio:cluster:stream",
-                    &redis_url,
-                ) {
-                    Ok(redis_adapter) => {
-                        let io_cluster = Arc::clone(&io);
-                        redis_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
-                            let _ = io_cluster.handle_cluster_packet(pkt);
-                        }));
-                        println!("  Redis Cluster Subscriber : active ({redis_url})");
-                        Some(Arc::new(redis_adapter) as Arc<dyn socketio_adapters::Adapter>)
+        let active_adapter: Option<Arc<dyn socketio_adapters::Adapter>> =
+            match gw_cfg.recovery.adapter.as_str() {
+                "redis" | "redis_streams" => {
+                    let redis_url = std::env::var("REDIS_URL")
+                        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
+                    match socketio_adapters::LiveRedisStreamsAdapter::connect(
+                        format!("gateway-{}", std::process::id()),
+                        "sio:cluster:stream",
+                        &redis_url,
+                    ) {
+                        Ok(redis_adapter) => {
+                            let io_cluster = Arc::clone(&io);
+                            redis_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
+                                let _ = io_cluster.handle_cluster_packet(pkt);
+                            }));
+                            println!("  Redis Cluster Subscriber : active ({redis_url})");
+                            Some(Arc::new(redis_adapter) as Arc<dyn socketio_adapters::Adapter>)
+                        }
+                        Err(_) => None,
                     }
-                    Err(_) => None,
                 }
-            }
-            "nats" | "nats_jetstream" => {
-                let nats_url = std::env::var("NATS_URL")
-                    .unwrap_or_else(|_| "nats://127.0.0.1:4222".to_owned());
-                let nats_adapter = socketio_adapters::LiveNatsJetStreamAdapter::new(
-                    format!("gateway-{}", std::process::id()),
-                    "sio.cluster",
-                    &nats_url,
-                );
-                let io_cluster = Arc::clone(&io);
-                nats_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
-                    let _ = io_cluster.handle_cluster_packet(pkt);
-                }));
-                println!("  NATS Cluster Subscriber  : active ({nats_url})");
-                Some(Arc::new(nats_adapter) as Arc<dyn socketio_adapters::Adapter>)
-            }
-            "postgres" => {
-                let pg_url = std::env::var("DATABASE_URL")
-                    .unwrap_or_else(|_| "postgres://postgres@127.0.0.1:5432/app".to_owned());
-                let pg_adapter = socketio_adapters::LivePostgresAdapter::new(
-                    format!("gateway-{}", std::process::id()),
-                    "socketio_cluster",
-                    &pg_url,
-                );
-                let io_cluster = Arc::clone(&io);
-                pg_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
-                    let _ = io_cluster.handle_cluster_packet(pkt);
-                }));
-                println!("  Postgres LISTEN Sub      : active");
-                Some(Arc::new(pg_adapter) as Arc<dyn socketio_adapters::Adapter>)
-            }
-            _ => None,
-        };
+                "nats" | "nats_jetstream" => {
+                    let nats_url = std::env::var("NATS_URL")
+                        .unwrap_or_else(|_| "nats://127.0.0.1:4222".to_owned());
+                    let nats_adapter = socketio_adapters::LiveNatsJetStreamAdapter::new(
+                        format!("gateway-{}", std::process::id()),
+                        "sio.cluster",
+                        &nats_url,
+                    );
+                    let io_cluster = Arc::clone(&io);
+                    nats_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
+                        let _ = io_cluster.handle_cluster_packet(pkt);
+                    }));
+                    println!("  NATS Cluster Subscriber  : active ({nats_url})");
+                    Some(Arc::new(nats_adapter) as Arc<dyn socketio_adapters::Adapter>)
+                }
+                "postgres" => {
+                    let pg_url = std::env::var("DATABASE_URL")
+                        .unwrap_or_else(|_| "postgres://postgres@127.0.0.1:5432/app".to_owned());
+                    let pg_adapter = socketio_adapters::LivePostgresAdapter::new(
+                        format!("gateway-{}", std::process::id()),
+                        "socketio_cluster",
+                        &pg_url,
+                    );
+                    let io_cluster = Arc::clone(&io);
+                    pg_adapter.spawn_subscriber_loop(Arc::new(move |pkt| {
+                        let _ = io_cluster.handle_cluster_packet(pkt);
+                    }));
+                    println!("  Postgres LISTEN Sub      : active");
+                    Some(Arc::new(pg_adapter) as Arc<dyn socketio_adapters::Adapter>)
+                }
+                _ => None,
+            };
 
         let io_bridge = Arc::clone(&io);
         let rec_bridge = Arc::clone(&recovery);
@@ -619,7 +625,9 @@ async fn main() {
                                         met.cswsh_rejections_total.inc();
                                         Response::builder()
                                             .status(StatusCode::FORBIDDEN)
-                                            .body(Full::new(Bytes::from_static(b"Forbidden Origin")))
+                                            .body(Full::new(Bytes::from_static(
+                                                b"Forbidden Origin",
+                                            )))
                                             .unwrap_or_else(|_| {
                                                 Response::new(Full::new(Bytes::new()))
                                             })

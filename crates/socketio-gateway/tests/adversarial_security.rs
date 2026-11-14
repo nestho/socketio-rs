@@ -15,7 +15,10 @@ fn adversarial_cve_2026_59724_crafted_sids_rejected() {
         &"a".repeat(65),
     ];
     for sid in malformed {
-        assert!(validate_sid(sid).is_err(), "SID should be rejected: {sid:?}");
+        assert!(
+            validate_sid(sid).is_err(),
+            "SID should be rejected: {sid:?}"
+        );
     }
 }
 

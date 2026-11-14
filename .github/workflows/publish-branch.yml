@@ -1,0 +1,35 @@
+name: Publish Documentation to Branch
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-pages:
+    name: Publish Docs & Interactive Assets to gh-pages Branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare static assets
+        run: |
+          mkdir -p public/assets public/docs
+          cp -r assets/* public/assets/ || true
+          cp -r docs/* public/docs/ || true
+          cp docs/interactive-comparison.html public/index.html
+          touch public/.nojekyll
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: gh-pages
+          force_orphan: true

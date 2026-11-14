@@ -255,13 +255,13 @@ mod tests {
 
     #[test]
     fn test_live_redis_adapter_builds_client_handle() {
-        let adapter = LiveRedisStreamsAdapter::connect(
-            "node-prod-1",
-            "sio:stream",
-            "redis://127.0.0.1:6379",
-        )
-        .expect("valid redis URI");
+        let adapter =
+            LiveRedisStreamsAdapter::connect("node-prod-1", "sio:stream", "redis://127.0.0.1:6379")
+                .expect("valid redis URI");
         assert_eq!(adapter.node_id(), "node-prod-1");
-        assert_eq!(adapter.csr_snapshot_key("pid-123"), "sio:stream:csr:pid-123");
+        assert_eq!(
+            adapter.csr_snapshot_key("pid-123"),
+            "sio:stream:csr:pid-123"
+        );
     }
 }

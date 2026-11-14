@@ -150,11 +150,8 @@ pub fn scan_source_snippet(source: &str, report: &mut MigrationScanReport) {
             }
         }
 
-        if let (
-            Some(Token::Ident(obj)),
-            Some(Token::Punct('.')),
-            Some(Token::Ident(prop)),
-        ) = (tokens.get(idx), tokens.get(idx + 1), tokens.get(idx + 2))
+        if let (Some(Token::Ident(obj)), Some(Token::Punct('.')), Some(Token::Ident(prop))) =
+            (tokens.get(idx), tokens.get(idx + 1), tokens.get(idx + 2))
         {
             if obj == "socket" && prop == "request" {
                 report.raw_request_usages += 1;
@@ -332,9 +329,18 @@ fn main() {
         println!("==============================================================");
         println!("  Target Path              : {}", target_dir);
         println!("  JS/TS Files Scanned      : {}", report.files_scanned);
-        println!("  Namespaces (.of)         : {} ({:?})", report.namespaces_detected, report.namespaces);
-        println!("  Event Handlers (.on)     : {} ({:?})", report.event_handlers_detected, report.event_names);
-        println!("  Room Broadcasts (.to/.in): {} ({:?})", report.room_broadcasts_detected, report.rooms);
+        println!(
+            "  Namespaces (.of)         : {} ({:?})",
+            report.namespaces_detected, report.namespaces
+        );
+        println!(
+            "  Event Handlers (.on)     : {} ({:?})",
+            report.event_handlers_detected, report.event_names
+        );
+        println!(
+            "  Room Broadcasts (.to/.in): {} ({:?})",
+            report.room_broadcasts_detected, report.rooms
+        );
         println!("  Middleware (.use)        : {}", report.middleware_count);
         println!("  CSR Configured           : {}", report.csr_configured);
         println!("  CORS Origins             : {:?}", report.cors_origins);
@@ -344,11 +350,24 @@ fn main() {
         println!("==============================================================");
     }
 
-    if let Some(scaffold_dir) = args.windows(2).find(|w| w[0] == "--scaffold").map(|w| Path::new(&w[1])) {
+    if let Some(scaffold_dir) = args
+        .windows(2)
+        .find(|w| w[0] == "--scaffold")
+        .map(|w| Path::new(&w[1]))
+    {
         let _ = fs::create_dir_all(scaffold_dir);
-        let _ = fs::write(scaffold_dir.join("gateway.toml"), generate_gateway_toml(&report));
-        let _ = fs::write(scaffold_dir.join("migrated_handlers.rs"), scaffold_rust_handlers(&report));
-        let _ = fs::write(scaffold_dir.join("MIGRATION_PLAN.md"), generate_migration_plan_md(&report));
+        let _ = fs::write(
+            scaffold_dir.join("gateway.toml"),
+            generate_gateway_toml(&report),
+        );
+        let _ = fs::write(
+            scaffold_dir.join("migrated_handlers.rs"),
+            scaffold_rust_handlers(&report),
+        );
+        let _ = fs::write(
+            scaffold_dir.join("MIGRATION_PLAN.md"),
+            generate_migration_plan_md(&report),
+        );
         println!("  Scaffolded files written to {}", scaffold_dir.display());
     }
 }

@@ -12,11 +12,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
 license = "MIT OR Apache-2.0"
-description = "Memory-safe, wire-compatible Socket.IO v4/v5 and Engine.IO v4 engine and polyglot sidecar gateway in pure Rust"
-keywords = ["socketio", "engineio", "websocket", "webtransport", "realtime"]
-categories = ["network-programming", "web-programming::websocket", "asynchronous"]
 
 [workspace.dependencies]
 bytes = "1.7"

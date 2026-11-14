@@ -226,7 +226,9 @@ async fn e2e_hyper_websocket_upgrade_ping_ack_and_binary() {
     assert!(conn_ack.to_text().unwrap().starts_with("40{\"sid\":"));
 
     // Ack roundtrip: `421["ping",{}]` -> `431["pong"]`
-    ws.send(Message::Text("421[\"ping\",{}]".into())).await.unwrap();
+    ws.send(Message::Text("421[\"ping\",{}]".into()))
+        .await
+        .unwrap();
     let ack_reply = ws.next().await.unwrap().unwrap();
     assert_eq!(ack_reply.to_text().unwrap(), "431[\"pong\"]");
 
@@ -332,9 +334,14 @@ async fn e2e_polling_to_websocket_2probe_3probe_5_upgrade_and_ack() {
     // 4. Socket.IO CONNECT (`40`) + Ack roundtrip (`421["ping",{}]` -> `431["pong"]`)
     ws.send(Message::Text("40".into())).await.unwrap();
     let conn_ack = ws.next().await.unwrap().unwrap();
-    assert_eq!(conn_ack.to_text().unwrap(), format!("40{{\"sid\":\"{sid}\"}}"));
+    assert_eq!(
+        conn_ack.to_text().unwrap(),
+        format!("40{{\"sid\":\"{sid}\"}}")
+    );
 
-    ws.send(Message::Text("421[\"ping\",{}]".into())).await.unwrap();
+    ws.send(Message::Text("421[\"ping\",{}]".into()))
+        .await
+        .unwrap();
     let ack_reply = ws.next().await.unwrap().unwrap();
     assert_eq!(ack_reply.to_text().unwrap(), "431[\"pong\"]");
 
@@ -412,11 +419,8 @@ async fn e2e_control_broadcast_and_healthz_over_hyper() {
                     (&Method::POST, "/_broadcast") => {
                         let body = req.into_body().collect().await.unwrap().to_bytes();
                         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-                        let payload = encode_event_simd(
-                            v["event"].as_str().unwrap(),
-                            &v["data"],
-                        )
-                        .unwrap();
+                        let payload =
+                            encode_event_simd(v["event"].as_str().unwrap(), &v["data"]).unwrap();
                         let frame = encode_v5_packet(&SocketIoPacket {
                             packet_type: PacketType::Event,
                             namespace: "/".to_owned(),
@@ -482,8 +486,12 @@ async fn e2e_cors_options_preflight_returns_204_with_credentials() {
     )
     .await;
     assert!(resp.contains("204 No Content"));
-    assert!(resp.to_lowercase().contains("access-control-allow-origin: https://app.example.com"));
-    assert!(resp.to_lowercase().contains("access-control-allow-credentials: true"));
+    assert!(resp
+        .to_lowercase()
+        .contains("access-control-allow-origin: https://app.example.com"));
+    assert!(resp
+        .to_lowercase()
+        .contains("access-control-allow-credentials: true"));
 }
 
 #[tokio::test]
@@ -498,7 +506,10 @@ async fn e2e_polyglot_room_join_leave_and_disconnect_control_api() {
 
     // Join room via ShardedRoomIndex (/_rooms/join)
     io.rooms.join("chat:room-9", sid);
-    assert_eq!(io.rooms.rooms_for_socket(sid), vec!["chat:room-9".to_owned()]);
+    assert_eq!(
+        io.rooms.rooms_for_socket(sid),
+        vec!["chat:room-9".to_owned()]
+    );
 
     // Leave room (/_rooms/leave) -> empty room pruned
     io.rooms.leave("chat:room-9", sid);

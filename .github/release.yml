@@ -1,0 +1,26 @@
+changelog:
+  categories:
+    - title: "🚀 Features & Architecture"
+      labels:
+        - "feature"
+        - "enhancement"
+    - title: "⚡ Performance & Benchmarks"
+      labels:
+        - "performance"
+        - "benchmark"
+    - title: "🔒 Security & Hardening"
+      labels:
+        - "security"
+    - title: "🐛 Bug Fixes & Mitigations"
+      labels:
+        - "bug"
+        - "fix"
+    - title: "📚 Documentation & Examples"
+      labels:
+        - "documentation"
+        - "docs"
+    - title: "🧹 Maintenance, CI/CD & Dependencies"
+      labels:
+        - "chore"
+        - "dependencies"
+        - "ci"

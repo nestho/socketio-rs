@@ -53,7 +53,10 @@ pub struct RecoveryManager {
 impl std::fmt::Debug for RecoveryManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RecoveryManager")
-            .field("max_disconnection_duration_ms", &self.max_disconnection_duration_ms)
+            .field(
+                "max_disconnection_duration_ms",
+                &self.max_disconnection_duration_ms,
+            )
             .field("has_external_store", &self.external_store.is_some())
             .finish()
     }
@@ -89,12 +92,7 @@ impl RecoveryManager {
     }
 
     /// Records an outbound room broadcast and returns its monotonic stream `offset`.
-    pub fn record_outbound(
-        &self,
-        room: &str,
-        encoded_frame: SharedBytes,
-        now_ms: u64,
-    ) -> u64 {
+    pub fn record_outbound(&self, room: &str, encoded_frame: SharedBytes, now_ms: u64) -> u64 {
         if let Ok(mut log) = self.replay_log.write() {
             return log.record_broadcast(room, encoded_frame, now_ms);
         }
@@ -122,7 +120,12 @@ impl RecoveryManager {
     }
 
     /// Attempts to restore a session from `(pid, since_offset)` during Socket.IO handshake.
-    pub fn try_recover(&self, pid: &str, since_offset: u64, now_ms: u64) -> Option<RecoveryOutcome> {
+    pub fn try_recover(
+        &self,
+        pid: &str,
+        since_offset: u64,
+        now_ms: u64,
+    ) -> Option<RecoveryOutcome> {
         let snapshot = {
             let mut map = self.snapshots.write().ok()?;
             map.remove(pid)?

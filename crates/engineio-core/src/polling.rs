@@ -220,7 +220,10 @@ pub async fn handle_polling_request(
         let mut b = Response::builder()
             .status(StatusCode::NO_CONTENT)
             .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            .header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, Authorization",
+            )
             .header("Access-Control-Max-Age", "86400")
             .header("Vary", "Origin");
         if let Some(ref orig) = origin_hdr {
@@ -297,7 +300,8 @@ pub async fn handle_polling_request(
                 }
 
                 let wait_ms = store.config().ping_interval_ms.min(25_000);
-                let _ = tokio::time::timeout(Duration::from_millis(wait_ms), notify.notified()).await;
+                let _ =
+                    tokio::time::timeout(Duration::from_millis(wait_ms), notify.notified()).await;
 
                 match store.drain_outbound(sid) {
                     Some((delayed, _)) if !delayed.is_empty() => {

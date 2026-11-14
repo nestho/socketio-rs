@@ -68,7 +68,9 @@ fn wifi_jitter_simulation_100_percent_delivery_via_csr() {
     }
 
     // 3. Client reconnects and recovers 100% of missed frames
-    let outcome = csr.try_recover("pid-jitter-1", last_seen_offset, 3_050).unwrap();
+    let outcome = csr
+        .try_recover("pid-jitter-1", last_seen_offset, 3_050)
+        .unwrap();
     assert!(outcome.recovered);
     assert_eq!(outcome.missed_frames.len(), 15);
 }

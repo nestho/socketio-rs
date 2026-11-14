@@ -41,7 +41,8 @@ async fn main() {
             &socket.id,
             "chat",
             Arc::new(|sock, ctx| {
-                if let Ok((_ev, data)) = socketio_parser::parse_dynamic_event(ctx.payload.as_slice())
+                if let Ok((_ev, data)) =
+                    socketio_parser::parse_dynamic_event(ctx.payload.as_slice())
                 {
                     sock.to("lobby").emit("chat", &data);
                 }

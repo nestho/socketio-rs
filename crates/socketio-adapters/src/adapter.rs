@@ -58,17 +58,11 @@ pub trait Adapter: Send + Sync {
         encoded_packet: SharedBytes,
     ) -> BoxFuture<'_, Result<(), AdapterError>>;
 
-    fn add_sockets(
-        &self,
-        sid: &str,
-        rooms: Vec<String>,
-    ) -> BoxFuture<'_, Result<(), AdapterError>>;
+    fn add_sockets(&self, sid: &str, rooms: Vec<String>)
+        -> BoxFuture<'_, Result<(), AdapterError>>;
 
-    fn del_sockets(
-        &self,
-        sid: &str,
-        rooms: Vec<String>,
-    ) -> BoxFuture<'_, Result<(), AdapterError>>;
+    fn del_sockets(&self, sid: &str, rooms: Vec<String>)
+        -> BoxFuture<'_, Result<(), AdapterError>>;
 
     fn fetch_sockets(
         &self,
@@ -147,12 +141,15 @@ impl Adapter for RedisStreamsAdapter {
         let state = Arc::clone(&self.state);
         Box::pin(async move {
             if let Ok(mut guard) = state.write() {
-                let entry = guard.sockets.entry(sid.clone()).or_insert(RemoteSocketInfo {
-                    sid,
-                    namespace: "/".to_owned(),
-                    rooms: Vec::new(),
-                    node_id,
-                });
+                let entry = guard
+                    .sockets
+                    .entry(sid.clone())
+                    .or_insert(RemoteSocketInfo {
+                        sid,
+                        namespace: "/".to_owned(),
+                        rooms: Vec::new(),
+                        node_id,
+                    });
                 for r in rooms {
                     if !entry.rooms.contains(&r) {
                         entry.rooms.push(r);
@@ -282,12 +279,15 @@ impl Adapter for NatsJetStreamAdapter {
         let state = Arc::clone(&self.state);
         Box::pin(async move {
             if let Ok(mut guard) = state.write() {
-                let entry = guard.sockets.entry(sid.clone()).or_insert(RemoteSocketInfo {
-                    sid,
-                    namespace: "/".to_owned(),
-                    rooms: Vec::new(),
-                    node_id,
-                });
+                let entry = guard
+                    .sockets
+                    .entry(sid.clone())
+                    .or_insert(RemoteSocketInfo {
+                        sid,
+                        namespace: "/".to_owned(),
+                        rooms: Vec::new(),
+                        node_id,
+                    });
                 entry.rooms.extend(rooms);
             }
             Ok(())
@@ -407,12 +407,15 @@ impl Adapter for PostgresAdapter {
         let state = Arc::clone(&self.state);
         Box::pin(async move {
             if let Ok(mut guard) = state.write() {
-                let entry = guard.sockets.entry(sid.clone()).or_insert(RemoteSocketInfo {
-                    sid,
-                    namespace: "/".to_owned(),
-                    rooms: Vec::new(),
-                    node_id,
-                });
+                let entry = guard
+                    .sockets
+                    .entry(sid.clone())
+                    .or_insert(RemoteSocketInfo {
+                        sid,
+                        namespace: "/".to_owned(),
+                        rooms: Vec::new(),
+                        node_id,
+                    });
                 entry.rooms.extend(rooms);
             }
             Ok(())

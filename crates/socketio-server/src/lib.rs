@@ -13,7 +13,9 @@ pub mod presence;
 pub mod prelude {
     pub use crate::ack::{AckError, AckTable};
     pub use crate::bridge::SocketIoEngineBridge;
-    pub use crate::extract::{AckSender, Bin, Data, EventContext, FromEventContext, State, TryData};
+    pub use crate::extract::{
+        AckSender, Bin, Data, EventContext, FromEventContext, State, TryData,
+    };
     pub use crate::layer::{LayerConfig, SocketIoLayer, SocketIoService};
     pub use crate::presence::{PresenceDiff, PresenceMember, PresenceRegistry, PushFallbackHook};
     pub use crate::{
@@ -23,7 +25,9 @@ pub mod prelude {
 }
 
 use serde::Serialize;
-use socketio_parser::{encode_event_simd, encode_v5_packet, PacketType, SharedBytes, SocketIoPacket};
+use socketio_parser::{
+    encode_event_simd, encode_v5_packet, PacketType, SharedBytes, SocketIoPacket,
+};
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -382,8 +386,7 @@ impl SocketRef {
     }
 
     pub fn broadcast(&self) -> BroadcastOperator {
-        BroadcastOperator::new(self.ns.clone(), Arc::clone(&self.rooms))
-            .except_sid(self.id.clone())
+        BroadcastOperator::new(self.ns.clone(), Arc::clone(&self.rooms)).except_sid(self.id.clone())
     }
 
     pub fn emit<T: Serialize>(&self, event: &str, data: &T) -> bool {
@@ -554,10 +557,7 @@ mod tests {
         s2.join("guild:1");
         s2.join("muted");
 
-        let sent = io
-            .to("guild:1")
-            .except("muted")
-            .emit("msg", &"hello");
+        let sent = io.to("guild:1").except("muted").emit("msg", &"hello");
         assert_eq!(sent, 1);
         assert!(rx1.try_recv().is_ok());
         assert!(rx2.try_recv().is_err());

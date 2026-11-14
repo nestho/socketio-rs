@@ -161,11 +161,14 @@ pub fn compress_if_above_threshold(
     if payload.len() <= threshold_bytes {
         return Ok((SharedBytes::from_slice(payload), false));
     }
-    let mut encoder = DeflateEncoder::new(Vec::with_capacity(payload.len() / 2), Compression::fast());
+    let mut encoder =
+        DeflateEncoder::new(Vec::with_capacity(payload.len() / 2), Compression::fast());
     encoder
         .write_all(payload)
         .map_err(|_| ParseError::CompressionFailed)?;
-    let compressed = encoder.finish().map_err(|_| ParseError::CompressionFailed)?;
+    let compressed = encoder
+        .finish()
+        .map_err(|_| ParseError::CompressionFailed)?;
     Ok((SharedBytes::from_vec(compressed), true))
 }
 
@@ -207,8 +210,8 @@ pub fn decompress_bounded(
 /// Compresses `payload` using a previous state snapshot (`prev_dict`) as a `zstd`
 /// dictionary for bandwidth-constrained mobile/slow clients (`S7-T04`).
 pub fn compress_zstd_delta(prev_dict: &[u8], payload: &[u8]) -> Result<SharedBytes, ParseError> {
-    let mut compressor =
-        zstd::bulk::Compressor::with_dictionary(3, prev_dict).map_err(|_| ParseError::CompressionFailed)?;
+    let mut compressor = zstd::bulk::Compressor::with_dictionary(3, prev_dict)
+        .map_err(|_| ParseError::CompressionFailed)?;
     let out = compressor
         .compress(payload)
         .map_err(|_| ParseError::CompressionFailed)?;
@@ -231,12 +234,12 @@ pub fn decompress_zstd_delta(
         .min(max_output_bytes);
     let mut decompressor = zstd::bulk::Decompressor::with_dictionary(prev_dict)
         .map_err(|_| ParseError::CompressionFailed)?;
-    let out = decompressor
-        .decompress(compressed, hard_cap)
-        .map_err(|_| ParseError::DecompressionBombDetected {
+    let out = decompressor.decompress(compressed, hard_cap).map_err(|_| {
+        ParseError::DecompressionBombDetected {
             ratio: max_ratio + 1,
             max_ratio,
-        })?;
+        }
+    })?;
     Ok(SharedBytes::from_vec(out))
 }
 
@@ -256,7 +259,9 @@ pub fn parse_dynamic_event(payload: &[u8]) -> Result<(String, serde_json::Value)
 }
 
 /// Parses a variadic Socket.IO event array `["event_name", arg1, arg2, ...]` (`S7-T03`).
-pub fn parse_variadic_event(payload: &[u8]) -> Result<(String, Vec<serde_json::Value>), ParseError> {
+pub fn parse_variadic_event(
+    payload: &[u8],
+) -> Result<(String, Vec<serde_json::Value>), ParseError> {
     let val: serde_json::Value =
         serde_json::from_slice(payload).map_err(|e| ParseError::JsonError(e.to_string()))?;
     let arr = val
@@ -280,8 +285,7 @@ pub fn encode_event_simd<T: Serialize>(event: &str, data: &T) -> Result<SharedBy
 
 /// Serializes a Socket.IO acknowledgement argument array `[data]` using `sonic-rs` SIMD JSON.
 pub fn encode_ack_simd<T: Serialize>(data: &T) -> Result<SharedBytes, ParseError> {
-    let bytes =
-        sonic_rs::to_vec(&(data,)).map_err(|e| ParseError::JsonError(e.to_string()))?;
+    let bytes = sonic_rs::to_vec(&(data,)).map_err(|e| ParseError::JsonError(e.to_string()))?;
     Ok(SharedBytes::from_vec(bytes))
 }
 
@@ -291,8 +295,8 @@ pub mod msgpack {
     use super::*;
 
     pub fn encode_event<T: Serialize>(event: &str, data: &T) -> Result<SharedBytes, ParseError> {
-        let bytes =
-            rmp_serde::to_vec(&(event, data)).map_err(|e| ParseError::MsgPackError(e.to_string()))?;
+        let bytes = rmp_serde::to_vec(&(event, data))
+            .map_err(|e| ParseError::MsgPackError(e.to_string()))?;
         Ok(SharedBytes::from_vec(bytes))
     }
 
@@ -371,16 +375,13 @@ pub fn decode_v5_packet(raw: SharedBytes) -> Result<SocketIoPacket, ParseError> 
     let mut idx = 1;
 
     let mut attachments = 0usize;
-    if matches!(
-        packet_type,
-        PacketType::BinaryEvent | PacketType::BinaryAck
-    ) {
+    if matches!(packet_type, PacketType::BinaryEvent | PacketType::BinaryAck) {
         let dash_pos = raw[idx..]
             .iter()
             .position(|&b| b == b'-')
             .ok_or(ParseError::MalformedHeader)?;
-        let num_str =
-            std::str::from_utf8(&raw[idx..idx + dash_pos]).map_err(|_| ParseError::MalformedHeader)?;
+        let num_str = std::str::from_utf8(&raw[idx..idx + dash_pos])
+            .map_err(|_| ParseError::MalformedHeader)?;
         attachments = num_str.parse().map_err(|_| ParseError::MalformedHeader)?;
         idx += dash_pos + 1;
     }
@@ -447,7 +448,10 @@ mod tests {
         };
 
         let encoded = encode_v5_packet(&pkt);
-        assert_eq!(&encoded[..], b"2/chat,42[\"message\",{\"hello\":\"world\"}]");
+        assert_eq!(
+            &encoded[..],
+            b"2/chat,42[\"message\",{\"hello\":\"world\"}]"
+        );
 
         let decoded = decode_v5_packet(encoded).expect("valid v5 frame");
         assert_eq!(decoded, pkt);
@@ -460,8 +464,7 @@ mod tests {
             text: "rust fast".to_owned(),
         };
         let encoded = encode_event_simd("chat", &msg).expect("simd encode");
-        let (event, decoded): (String, ChatMsg) =
-            parse_event_simd(&encoded).expect("simd decode");
+        let (event, decoded): (String, ChatMsg) = parse_event_simd(&encoded).expect("simd decode");
         assert_eq!(event, "chat");
         assert_eq!(decoded, msg);
     }
@@ -487,7 +490,9 @@ mod tests {
             payload: SharedBytes::from_slice(b"[\"upload\",{\"_placeholder\":true,\"num\":0}]"),
         };
         assert!(recon.start(pkt).is_none());
-        assert!(recon.push_attachment(SharedBytes::from_slice(b"chunk1")).is_none());
+        assert!(recon
+            .push_attachment(SharedBytes::from_slice(b"chunk1"))
+            .is_none());
         let (_done_pkt, bins) = recon
             .push_attachment(SharedBytes::from_slice(b"chunk2"))
             .expect("2 attachments complete packet");

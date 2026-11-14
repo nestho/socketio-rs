@@ -12,25 +12,23 @@ pub mod recovery;
 #[cfg(feature = "redis-adapter")]
 pub mod redis_live;
 
-pub use adapter::{
-    Adapter, AdapterError, BroadcastOptions, ClusterBroadcastPacket, ClusterPacketHandler,
-    RemoteSocketInfo,
-};
 #[cfg(feature = "nats-adapter")]
 pub use adapter::NatsJetStreamAdapter;
 #[cfg(feature = "postgres-adapter")]
 pub use adapter::PostgresAdapter;
 #[cfg(feature = "redis-adapter")]
 pub use adapter::RedisStreamsAdapter;
+pub use adapter::{
+    Adapter, AdapterError, BroadcastOptions, ClusterBroadcastPacket, ClusterPacketHandler,
+    RemoteSocketInfo,
+};
 #[cfg(feature = "nats-adapter")]
 pub use nats_live::LiveNatsJetStreamAdapter;
 #[cfg(feature = "postgres-adapter")]
 pub use postgres_live::LivePostgresAdapter;
+pub use recovery::{CsrSnapshotStore, RecoveryManager, RecoveryOutcome, SessionRecoverySnapshot};
 #[cfg(feature = "redis-adapter")]
 pub use redis_live::LiveRedisStreamsAdapter;
-pub use recovery::{
-    CsrSnapshotStore, RecoveryManager, RecoveryOutcome, SessionRecoverySnapshot,
-};
 
 use socketio_parser::SharedBytes;
 use std::collections::VecDeque;

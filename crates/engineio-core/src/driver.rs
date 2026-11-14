@@ -73,7 +73,8 @@ pub trait IoDriver: Send + Sync {
         } else {
             socket2::Domain::IPV6
         };
-        let sock = socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?;
+        let sock =
+            socket2::Socket::new(domain, socket2::Type::STREAM, Some(socket2::Protocol::TCP))?;
         sock.set_reuse_address(true)?;
         #[cfg(all(unix, not(target_os = "solaris"), not(target_os = "illumos")))]
         if self.tuning().so_reuseport {
@@ -133,7 +134,11 @@ pub struct AdaptiveDriver {
 
 impl AdaptiveDriver {
     /// Probes the host OS and container `seccomp` policy to choose the optimal driver.
-    pub fn probe(prefer_io_uring: bool, requested_shards: usize, tuning: SocketTuningProfile) -> Self {
+    pub fn probe(
+        prefer_io_uring: bool,
+        requested_shards: usize,
+        tuning: SocketTuningProfile,
+    ) -> Self {
         let kind = detect_optimal_driver(prefer_io_uring);
         let shard_count = if requested_shards == 0 {
             std::thread::available_parallelism()

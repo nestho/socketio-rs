@@ -120,9 +120,18 @@ impl HandshakePacket {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineError {
     InvalidSid,
-    PayloadTooLarge { actual: usize, max: usize },
-    WriteBackpressureExceeded { buffered: usize, high_watermark: usize },
-    InvalidUpgradeTransition { from: UpgradeState, target: TransportKind },
+    PayloadTooLarge {
+        actual: usize,
+        max: usize,
+    },
+    WriteBackpressureExceeded {
+        buffered: usize,
+        high_watermark: usize,
+    },
+    InvalidUpgradeTransition {
+        from: UpgradeState,
+        target: TransportKind,
+    },
 }
 
 impl fmt::Display for EngineError {

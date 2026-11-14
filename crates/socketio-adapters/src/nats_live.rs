@@ -111,8 +111,8 @@ impl Adapter for LiveNatsJetStreamAdapter {
         let subject = self.broadcast_subject();
 
         Box::pin(async move {
-            let payload = serde_json::to_vec(&pkt)
-                .map_err(|e| AdapterError::Serialization(e.to_string()))?;
+            let payload =
+                serde_json::to_vec(&pkt).map_err(|e| AdapterError::Serialization(e.to_string()))?;
             let client = match client_opt {
                 Some(c) => c,
                 None => async_nats::connect(&nats_url)
