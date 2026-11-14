@@ -3,9 +3,17 @@ name = "socketio-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Sharded room router, cache-line padded metrics, CSWSH Origin guard, and Socket.IO server API"
+description = "Tower-compatible Socket.IO v5 server with Axum-style extractors, sharded rooms, AckTable, and CSWSH Origin guard"
 
 [dependencies]
+bytes.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tower.workspace = true
 engineio-core.workspace = true
 socketio-parser.workspace = true
 socketio-adapters.workspace = true

@@ -3,6 +3,16 @@ name = "socketio-parser"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Zero-copy Arc<[u8]> shared-buffer Engine.IO v4 and Socket.IO v5 packet framing with decompression-bomb guards"
+description = "Zero-copy SharedBytes Engine.IO v4 / Socket.IO v5 framing with sonic-rs SIMD JSON, MsgPack, binary attachments, and bounded permessage-deflate"
+
+[features]
+default = ["msgpack"]
+msgpack = ["dep:rmp-serde"]
 
 [dependencies]
+flate2.workspace = true
+rmp-serde = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+sonic-rs.workspace = true
+thiserror.workspace = true
