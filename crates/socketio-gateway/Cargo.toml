@@ -22,3 +22,7 @@ socketio-adapters.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemallocator = "0.6"
+
+[dev-dependencies]
+futures-util.workspace = true
+tokio-tungstenite.workspace = true

@@ -142,3 +142,110 @@ async fn e2e_hyper_http_polling_handshake_ping_ack_binary_and_serve_client() {
     assert!(poll2.contains("431[\"pong\"]"));
     assert_eq!(*uploaded_bin.lock().unwrap(), vec![1, 2, 3]);
 }
+
+#[tokio::test]
+async fn e2e_hyper_websocket_upgrade_ping_ack_and_binary() {
+    use engineio_core::{handle_websocket_upgrade, is_websocket_upgrade};
+    use futures_util::{SinkExt, StreamExt};
+    use tokio::sync::Notify;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let io = Arc::new(SocketIo::new(4));
+    let bridge = SocketIoEngineBridge::new(Arc::clone(&io));
+    let b_ns = Arc::clone(&bridge);
+    let uploaded_bin: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let bin_c = Arc::clone(&uploaded_bin);
+    let bin_done = Arc::new(Notify::new());
+    let bin_done_c = Arc::clone(&bin_done);
+
+    io.ns("/", move |socket| {
+        let b1 = Arc::clone(&b_ns);
+        b1.register_event_handler(
+            &socket.id,
+            "ping",
+            Arc::new(|_sock, ctx| {
+                AckSender::from_context(&ctx).send(&"pong");
+            }),
+        );
+        let b2 = Arc::clone(&b_ns);
+        let bc = Arc::clone(&bin_c);
+        let bd = Arc::clone(&bin_done_c);
+        b2.register_event_handler(
+            &socket.id,
+            "upload",
+            Arc::new(move |_sock, ctx| {
+                if let Some(first) = ctx.binaries.first() {
+                    *bc.lock().unwrap() = first.as_slice().to_vec();
+                    bd.notify_one();
+                }
+            }),
+        );
+    });
+
+    let store = SessionStore::new(EngineConfig::default());
+    let h: Arc<dyn EngineHandler> = Arc::clone(&bridge) as Arc<dyn EngineHandler>;
+    let (client_io, server_io) = tokio::io::duplex(65_536);
+
+    let server_task = tokio::spawn(async move {
+        let svc = service_fn(move |req| {
+            let s = store.clone();
+            let b = Arc::clone(&h);
+            async move {
+                let resp = if is_websocket_upgrade(&req) {
+                    handle_websocket_upgrade(req, s, Some(b)).await
+                } else {
+                    Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body(Full::new(Bytes::new()))
+                        .unwrap()
+                };
+                Ok::<_, std::convert::Infallible>(resp)
+            }
+        });
+        let _ = hyper::server::conn::http1::Builder::new()
+            .serve_connection(TokioIo::new(server_io), svc)
+            .with_upgrades()
+            .await;
+    });
+
+    let (mut ws, resp) = tokio_tungstenite::client_async(
+        "ws://localhost/socket.io/?EIO=4&transport=websocket",
+        client_io,
+    )
+    .await
+    .expect("WebSocket handshake succeeds");
+    assert_eq!(resp.status(), StatusCode::SWITCHING_PROTOCOLS);
+
+    // Engine.IO v4 OPEN handshake (`0{...}`)
+    let open_msg = ws.next().await.unwrap().unwrap();
+    assert!(open_msg.to_text().unwrap().starts_with('0'));
+
+    // Socket.IO v5 CONNECT (`40`) -> expect `40{"sid":...}`
+    ws.send(Message::Text("40".into())).await.unwrap();
+    let conn_ack = ws.next().await.unwrap().unwrap();
+    assert!(conn_ack.to_text().unwrap().starts_with("40{\"sid\":"));
+
+    // Ack roundtrip: `421["ping",{}]` -> `431["pong"]`
+    ws.send(Message::Text("421[\"ping\",{}]".into())).await.unwrap();
+    let ack_reply = ws.next().await.unwrap().unwrap();
+    assert_eq!(ack_reply.to_text().unwrap(), "431[\"pong\"]");
+
+    // Binary event + raw RFC 6455 binary attachment frame
+    ws.send(Message::Text(
+        "451-[\"upload\",{\"_placeholder\":true,\"num\":0}]".into(),
+    ))
+    .await
+    .unwrap();
+    ws.send(Message::Binary(Bytes::from_static(&[9, 8, 7])))
+        .await
+        .unwrap();
+
+    bin_done.notified().await;
+
+    // Clean close
+    ws.send(Message::Text("1".into())).await.unwrap();
+    let _ = ws.close(None).await;
+    server_task.abort();
+
+    assert_eq!(*uploaded_bin.lock().unwrap(), vec![9, 8, 7]);
+}
