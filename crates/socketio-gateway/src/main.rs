@@ -258,6 +258,7 @@ async fn main() {
         let io_bridge = Arc::clone(&io);
         let rec_bridge = Arc::clone(&recovery);
         let met_bridge = Arc::clone(&metrics);
+        let b_stats = Arc::clone(&bridge);
         let adapter_bridge = active_adapter.clone();
         tokio::spawn(async move {
             loop {
@@ -267,12 +268,14 @@ async fn main() {
                 let io_c = Arc::clone(&io_bridge);
                 let rec_c = Arc::clone(&rec_bridge);
                 let met_c = Arc::clone(&met_bridge);
+                let bs_c = Arc::clone(&b_stats);
                 let adp_c = adapter_bridge.clone();
                 tokio::spawn(async move {
                     let svc = service_fn(move |req: http::Request<hyper::body::Incoming>| {
                         let io_inner = Arc::clone(&io_c);
                         let rec_inner = Arc::clone(&rec_c);
                         let met_inner = Arc::clone(&met_c);
+                        let bs_inner = Arc::clone(&bs_c);
                         let adp_inner = adp_c.clone();
                         async move {
                             let resp = match (req.method(), req.uri().path()) {
@@ -281,6 +284,17 @@ async fn main() {
                                     .header("Content-Type", "application/json")
                                     .body(Full::new(Bytes::from(format!(
                                         "{{\"status\":\"ok\",\"shards\":{cores}}}"
+                                    ))))
+                                    .unwrap_or_else(|_| Response::new(Full::new(Bytes::new()))),
+                                (&Method::GET, "/_stats") => Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("Content-Type", "application/json")
+                                    .body(Full::new(Bytes::from(format!(
+                                        "{{\"active_sessions\":{},\"active_rooms\":{},\"recovered_sessions\":{},\"broadcasts_total\":{}}}",
+                                        bs_inner.active_session_count(),
+                                        io_inner.rooms.active_room_count(),
+                                        bs_inner.recovered_session_count(),
+                                        met_inner.broadcasts_total.get(),
                                     ))))
                                     .unwrap_or_else(|_| Response::new(Full::new(Bytes::new()))),
                                 (&Method::GET, "/metrics") => Response::builder()

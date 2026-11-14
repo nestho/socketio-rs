@@ -14,6 +14,7 @@ use socketio_parser::{
     SocketIoPacket,
 };
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
@@ -43,6 +44,7 @@ pub struct SocketIoEngineBridge {
     acks: Arc<AckTable>,
     recovery: Option<Arc<RecoveryManager>>,
     sessions: RwLock<HashMap<String, ActiveSession>>,
+    recovered_count: AtomicU64,
 }
 
 struct ActiveSession {
@@ -64,6 +66,7 @@ impl SocketIoEngineBridge {
             acks: Arc::new(AckTable::new(4096)),
             recovery: None,
             sessions: RwLock::new(HashMap::new()),
+            recovered_count: AtomicU64::new(0),
         })
     }
 
@@ -73,7 +76,16 @@ impl SocketIoEngineBridge {
             acks: Arc::new(AckTable::new(4096)),
             recovery: Some(recovery),
             sessions: RwLock::new(HashMap::new()),
+            recovered_count: AtomicU64::new(0),
         })
+    }
+
+    pub fn active_session_count(&self) -> usize {
+        self.sessions.read().map(|g| g.len()).unwrap_or(0)
+    }
+
+    pub fn recovered_session_count(&self) -> u64 {
+        self.recovered_count.load(Ordering::Relaxed)
     }
 
     /// Registers an event callback (`socket.on(event, ...)`) for a connected session.
@@ -231,6 +243,7 @@ impl EngineHandler for SocketIoEngineBridge {
                         return;
                     };
                     if let Some(ref outcome) = recovered_outcome {
+                        self.recovered_count.fetch_add(1, Ordering::Relaxed);
                         if let Some(req_pid) = auth_req.as_ref().and_then(|a| a.pid.clone()) {
                             sess.pid = req_pid;
                         }

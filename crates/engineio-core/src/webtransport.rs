@@ -87,7 +87,7 @@ pub async fn serve_webtransport_endpoint(
             .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?,
         _ => Identity::self_signed(["localhost", "127.0.0.1"])
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
+            .map_err(|e| std::io::Error::other(e.to_string()))?,
     };
 
     if let Some(leaf) = identity.certificate_chain().as_slice().first() {
@@ -100,7 +100,7 @@ pub async fn serve_webtransport_endpoint(
         .build();
 
     let endpoint = Endpoint::server(wt_server_cfg)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
 
     loop {
         let incoming = endpoint.accept().await;
@@ -212,7 +212,7 @@ mod tests {
     fn test_jittered_connection_duration_spreads_reconnects() {
         let d1 = compute_jittered_duration_ms(60_000, 15, "sid-alpha-00000001");
         let d2 = compute_jittered_duration_ms(60_000, 15, "sid-beta-000000002");
-        assert!(d1 >= 60_000 && d1 <= 69_000);
-        assert!(d2 >= 60_000 && d2 <= 69_000);
+        assert!((60_000..=69_000).contains(&d1));
+        assert!((60_000..=69_000).contains(&d2));
     }
 }
