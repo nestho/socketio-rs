@@ -249,3 +249,96 @@ async fn e2e_hyper_websocket_upgrade_ping_ack_and_binary() {
 
     assert_eq!(*uploaded_bin.lock().unwrap(), vec![9, 8, 7]);
 }
+
+#[tokio::test]
+async fn e2e_polling_to_websocket_2probe_3probe_5_upgrade_and_ack() {
+    use engineio_core::{handle_websocket_upgrade, is_websocket_upgrade};
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+
+    let io = Arc::new(SocketIo::new(4));
+    let bridge = SocketIoEngineBridge::new(Arc::clone(&io));
+    let b_ns = Arc::clone(&bridge);
+
+    io.ns("/", move |socket| {
+        let b1 = Arc::clone(&b_ns);
+        b1.register_event_handler(
+            &socket.id,
+            "ping",
+            Arc::new(|_sock, ctx| {
+                AckSender::from_context(&ctx).send(&"pong");
+            }),
+        );
+    });
+
+    let store = SessionStore::new(EngineConfig::default());
+    let h: Arc<dyn EngineHandler> = Arc::clone(&bridge) as Arc<dyn EngineHandler>;
+
+    // 1. Start with HTTP polling handshake to obtain `sid`
+    let hs_resp = send_http_request(
+        store.clone(),
+        Arc::clone(&h),
+        "GET /socket.io/?EIO=4&transport=polling HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+    )
+    .await;
+    let body_start = hs_resp.find("\r\n\r\n").unwrap() + 4;
+    let hs_json: serde_json::Value = serde_json::from_str(&hs_resp[body_start + 1..]).unwrap();
+    let sid = hs_json["sid"].as_str().unwrap().to_owned();
+
+    // Enqueue a pending polling packet (`42["queued",1]`) to verify drain-on-upgrade
+    assert!(store.enqueue_packet(&sid, "42[\"queued\",1]"));
+
+    // 2. Upgrade to WebSocket with `?EIO=4&transport=websocket&sid=<sid>`
+    let (client_io, server_io) = tokio::io::duplex(65_536);
+    let store_ws = store.clone();
+    let h_ws = Arc::clone(&h);
+    let server_task = tokio::spawn(async move {
+        let svc = service_fn(move |req| {
+            let s = store_ws.clone();
+            let b = Arc::clone(&h_ws);
+            async move {
+                let resp = if is_websocket_upgrade(&req) {
+                    handle_websocket_upgrade(req, s, Some(b)).await
+                } else {
+                    Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body(Full::new(Bytes::new()))
+                        .unwrap()
+                };
+                Ok::<_, std::convert::Infallible>(resp)
+            }
+        });
+        let _ = hyper::server::conn::http1::Builder::new()
+            .serve_connection(TokioIo::new(server_io), svc)
+            .with_upgrades()
+            .await;
+    });
+
+    let ws_url = format!("ws://localhost/socket.io/?EIO=4&transport=websocket&sid={sid}");
+    let (mut ws, resp) = tokio_tungstenite::client_async(ws_url, client_io)
+        .await
+        .expect("WS upgrade handshake succeeds");
+    assert_eq!(resp.status(), StatusCode::SWITCHING_PROTOCOLS);
+
+    // 3. Engine.IO v4 `2probe` -> `3probe` -> `5` upgrade sequence
+    ws.send(Message::Text("2probe".into())).await.unwrap();
+    let probe_reply = ws.next().await.unwrap().unwrap();
+    assert_eq!(probe_reply.to_text().unwrap(), "3probe");
+
+    ws.send(Message::Text("5".into())).await.unwrap();
+    let drained = ws.next().await.unwrap().unwrap();
+    assert_eq!(drained.to_text().unwrap(), "42[\"queued\",1]");
+
+    // 4. Socket.IO CONNECT (`40`) + Ack roundtrip (`421["ping",{}]` -> `431["pong"]`)
+    ws.send(Message::Text("40".into())).await.unwrap();
+    let conn_ack = ws.next().await.unwrap().unwrap();
+    assert_eq!(conn_ack.to_text().unwrap(), format!("40{{\"sid\":\"{sid}\"}}"));
+
+    ws.send(Message::Text("421[\"ping\",{}]".into())).await.unwrap();
+    let ack_reply = ws.next().await.unwrap().unwrap();
+    assert_eq!(ack_reply.to_text().unwrap(), "431[\"pong\"]");
+
+    ws.send(Message::Text("1".into())).await.unwrap();
+    let _ = ws.close(None).await;
+    server_task.abort();
+}

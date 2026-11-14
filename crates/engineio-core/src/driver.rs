@@ -85,6 +85,34 @@ pub trait IoDriver: Send + Sync {
         sock.listen(1024)?;
         Ok(sock.into())
     }
+
+    /// Binds one `SO_REUSEPORT` non-blocking listener per worker shard (`shard_count()`).
+    fn bind_all_shard_listeners(&self, addr: SocketAddr) -> io::Result<Vec<TcpListener>> {
+        let count = self.shard_count().max(1);
+        let mut listeners = Vec::with_capacity(count);
+        for shard_id in 0..count {
+            listeners.push(self.bind_shard_listener(shard_id, addr)?);
+        }
+        Ok(listeners)
+    }
+}
+
+/// Configuration for Linux 6.x `io_uring` thread-per-core completion rings (`--features io-uring`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IoUringRingConfig {
+    pub sq_entries: u32,
+    pub provided_buffer_ring_size: u16,
+    pub multishot_accept: bool,
+}
+
+impl Default for IoUringRingConfig {
+    fn default() -> Self {
+        Self {
+            sq_entries: 4096,
+            provided_buffer_ring_size: 1024,
+            multishot_accept: true,
+        }
+    }
 }
 
 /// Default adaptive `IoDriver` implementation that probes OS/container limits at startup.

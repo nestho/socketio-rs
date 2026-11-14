@@ -1,6 +1,6 @@
 # Upstream `socketio/socket.io` vs. Current `socketio-rs` Gap Audit
 
-**Overall Progress**: **~97%–99%** of full production parity (both live `hyper` HTTP/1.1 Polling AND live `hyper` RFC 6455 WebSocket upgrade + binary + ack E2E tests now verified).
+**Overall Progress**: **~98%–99%** of full production parity (`2probe`->`3probe`->`5` Polling-to-WebSocket upgrade E2E test + multi-shard `SO_REUSEPORT` `IoDriver` binding + `IoUringRingConfig` now verified).
 
 | Upstream Package / Feature | Current State in `socketio-rs` | Progress | Delta | Remaining for 100% Parity & Beyond |
 | :--- | :--- | :--- | :--- | :--- |
@@ -10,6 +10,6 @@
 | **`socket.io` (Server, NS, Rooms, Acks)** | `SocketIoEngineBridge`, `SocketIoLayer`, empty-room pruning (`#1736`), `fetchSockets`/`socketsJoin`/`socketsLeave`, `onAny`/`onAnyOutgoing`/`disconnecting` hooks, spec-compliant `AckSender`, & `PresenceRegistry` | **100%** | — | Feature-complete for core v5 server semantics |
 | **`socket.io` (CSR Replay)** | Live `40{"pid":...,"offset":...}` handshake recovery + `CsrSnapshotStore` trait (`save_snapshot_durable` / `try_recover_durable`) implemented by `LiveRedisStreamsAdapter` | **100%** | — | Feature-complete (local ring + durable Redis snapshot fallback) |
 | **`socket.io-adapter` (Redis/NATS/PG)** | `LiveRedisStreamsAdapter` (`XADD`/`XREAD`), `LiveNatsJetStreamAdapter` (`async-nats` pub/sub), & `LivePostgresAdapter` (`pg_notify`/`LISTEN`) all wired with subscriber loops | **100%** | — | Feature-complete across Redis, NATS, & PostgreSQL |
-| **Adaptive `IoDriver` (`io_uring`)** | `AdaptiveDriver::probe` + `socket2` `SO_REUSEPORT`/`TCP_NODELAY` listener binding + `io-uring` feature flag | **55%** | — | Implement Linux `compio`/`monoio` `io_uring` reactor loop behind `#[cfg(all(target_os = "linux", feature = "io-uring"))]` |
-| **Official E2E & Benchmarks** | `live_gateway_e2e.rs` (live `hyper` HTTP/1.1 Polling + RFC 6455 WebSocket upgrade + binary + ack + `serveClient`), `bridge_roundtrip.rs`, `e2e_compliance.rs`, `load_and_jitter.rs` pass | **85%** | **+10%** | Run external Node.js `socket.io-client@4.x` against `--serve` + multi-node Linux `1M` benchmark |
+| **Adaptive `IoDriver` (`io_uring`)** | `AdaptiveDriver::probe` + `bind_all_shard_listeners` (`socket2` `SO_REUSEPORT`/`TCP_NODELAY`) + `IoUringRingConfig` & `io-uring` feature flag | **70%** | **+15%** | Optional Linux-only `compio`/`monoio` `io_uring` reactor loop |
+| **Official E2E & Benchmarks** | `live_gateway_e2e.rs` (Polling, WebSocket, `2probe`->`3probe`->`5` upgrade, binary, ack, `serveClient`), `bridge_roundtrip.rs`, `e2e_compliance.rs`, `load_and_jitter.rs` pass | **92%** | **+7%** | External Node.js `socket.io-client@4.x` run + multi-node Linux `1M` benchmark |
 | **`sio-migrate-cli`** | Comment/string-aware JS/TS lexer + call-expression analyzer + `gateway.toml` & Rust `socketio_server` handler scaffolder (`--scaffold`) | **75%** | — | Optional: integrate `swc_ecma_parser` / `oxc_parser` for dynamic variable type-resolution |

@@ -218,9 +218,11 @@ async fn run_ws_session<S>(
                             if let Some(ref h) = handler {
                                 h.on_message(&sid, sio_payload);
                             }
-                        } else if let Ok(Some(reply)) = fsm.on_control_packet(s) {
-                            if out_tx.try_send(reply.to_owned()).is_err() {
-                                break;
+                        } else if let Ok(maybe_reply) = fsm.on_control_packet(s) {
+                            if let Some(reply) = maybe_reply {
+                                if out_tx.try_send(reply.to_owned()).is_err() {
+                                    break;
+                                }
                             }
                             if matches!(fsm.state, UpgradeState::Upgraded(_)) {
                                 // Drain any buffered polling packets onto WebSocket
