@@ -1,14 +1,21 @@
 #![forbid(unsafe_code)]
-//! `sio-migrate` scans Node.js / TypeScript Socket.IO repositories to detect
-//! patterns (`io.of`, `socket.on`, `socket.to`, `socket.request` retention),
-//! estimate RAM/latency savings, and scaffold Sidecar or Native Rust code.
+//! `sio-migrate` performs comment- and string-aware JS/TS lexical analysis of
+//! Socket.IO repositories to extract namespaces (`io.of(...)`), event handlers
+//! (`socket.on(...)`), rooms (`.to(...)`/`.in(...)`/`.join(...)`), middleware
+//! (`io.use(...)`), and `socket.request` retention, then generates `gateway.toml`
+//! and Rust `socketio_server` handler scaffolding.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct MigrationScanReport {
     pub files_scanned: usize,
+    pub namespaces: BTreeSet<String>,
+    pub event_names: BTreeSet<String>,
+    pub rooms: BTreeSet<String>,
+    pub middleware_count: usize,
     pub namespaces_detected: usize,
     pub event_handlers_detected: usize,
     pub room_broadcasts_detected: usize,
@@ -16,13 +23,137 @@ pub struct MigrationScanReport {
     pub recommended_path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Token {
+    Ident(String),
+    StringLit(String),
+    Punct(char),
+}
+
+/// Tokenizes JS/TS source while stripping `//` line comments and `/* ... */` block comments.
+fn lex_js_ts(src: &str) -> Vec<Token> {
+    let bytes = src.as_bytes();
+    let len = bytes.len();
+    let mut i = 0usize;
+    let mut out = Vec::new();
+
+    while i < len {
+        let c = bytes[i];
+        // Skip whitespace
+        if c.is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        // Skip line comment `// ...`
+        if c == b'/' && i + 1 < len && bytes[i + 1] == b'/' {
+            i += 2;
+            while i < len && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        // Skip block comment `/* ... */`
+        if c == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(len);
+            continue;
+        }
+        // String literals `'...'`, `"..."`, `` `...` ``
+        if c == b'\'' || c == b'"' || c == b'`' {
+            let quote = c;
+            i += 1;
+            let mut s = String::new();
+            while i < len {
+                let ch = bytes[i];
+                if ch == b'\\' && i + 1 < len {
+                    i += 2;
+                    continue;
+                }
+                if ch == quote {
+                    i += 1;
+                    break;
+                }
+                s.push(ch as char);
+                i += 1;
+            }
+            out.push(Token::StringLit(s));
+            continue;
+        }
+        // Identifiers
+        if c.is_ascii_alphabetic() || c == b'_' || c == b'$' {
+            let start = i;
+            i += 1;
+            while i < len
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'$')
+            {
+                i += 1;
+            }
+            out.push(Token::Ident(src[start..i].to_owned()));
+            continue;
+        }
+        out.push(Token::Punct(c as char));
+        i += 1;
+    }
+    out
+}
+
 pub fn scan_source_snippet(source: &str, report: &mut MigrationScanReport) {
     report.files_scanned += 1;
-    report.namespaces_detected += source.matches(".of(").count();
-    report.event_handlers_detected += source.matches(".on(").count();
-    report.room_broadcasts_detected +=
-        source.matches(".to(").count() + source.matches(".in(").count();
-    report.raw_request_usages += source.matches("socket.request").count();
+    let tokens = lex_js_ts(source);
+
+    for idx in 0..tokens.len() {
+        // Detect `<ident>.<method>(<string_lit>...)`
+        if let (Some(Token::Punct('.')), Some(Token::Ident(method)), Some(Token::Punct('('))) =
+            (tokens.get(idx), tokens.get(idx + 1), tokens.get(idx + 2))
+        {
+            let first_str = match tokens.get(idx + 3) {
+                Some(Token::StringLit(s)) => Some(s.clone()),
+                _ => None,
+            };
+
+            match method.as_str() {
+                "of" => {
+                    report.namespaces_detected += 1;
+                    if let Some(ns) = first_str {
+                        report.namespaces.insert(ns);
+                    }
+                }
+                "on" => {
+                    report.event_handlers_detected += 1;
+                    if let Some(ev) = first_str {
+                        if ev != "connection" && ev != "disconnect" && ev != "disconnecting" {
+                            report.event_names.insert(ev);
+                        }
+                    }
+                }
+                "to" | "in" | "join" => {
+                    report.room_broadcasts_detected += 1;
+                    if let Some(room) = first_str {
+                        report.rooms.insert(room);
+                    }
+                }
+                "use" => {
+                    report.middleware_count += 1;
+                }
+                _ => {}
+            }
+        }
+
+        // Detect `socket.request`
+        if let (
+            Some(Token::Ident(obj)),
+            Some(Token::Punct('.')),
+            Some(Token::Ident(prop)),
+        ) = (tokens.get(idx), tokens.get(idx + 1), tokens.get(idx + 2))
+        {
+            if obj == "socket" && prop == "request" {
+                report.raw_request_usages += 1;
+            }
+        }
+    }
 
     if report.raw_request_usages > 0 {
         report.recommended_path =
@@ -54,24 +185,97 @@ pub fn scan_directory(dir: &Path, report: &mut MigrationScanReport) {
     }
 }
 
+/// Generates a tailored `gateway.toml` configuration from the scan report.
+pub fn generate_gateway_toml(report: &MigrationScanReport) -> String {
+    let adapter = if report.room_broadcasts_detected > 0 {
+        "redis"
+    } else {
+        "in_memory"
+    };
+    format!(
+        "# Auto-generated by sio-migrate\n\
+         [server]\n\
+         bind_addr = \"0.0.0.0:3000\"\n\
+         path = \"/socket.io/\"\n\
+         io_driver = \"auto\"\n\
+         worker_threads = 0\n\
+         shutdown_drain_timeout_ms = 15000\n\
+         max_connection_duration_jitter_pct = 15\n\n\
+         [recovery]\n\
+         enabled = true\n\
+         max_disconnection_duration_ms = 120000\n\
+         ring_buffer_capacity_per_room = 512\n\
+         adapter = \"{adapter}\"\n\n\
+         [bridge]\n\
+         broadcast_bind_addr = \"127.0.0.1:3001\"\n"
+    )
+}
+
+/// Generates native Rust `socketio_server` namespace and event handler scaffolding.
+pub fn scaffold_rust_handlers(report: &MigrationScanReport) -> String {
+    let mut out = String::from(
+        "// Auto-generated by sio-migrate\n\
+         use socketio_server::prelude::*;\n\
+         use std::sync::Arc;\n\n\
+         pub fn register_migrated_namespaces(io: &Arc<SocketIo>, bridge: &Arc<SocketIoEngineBridge>) {\n",
+    );
+
+    let namespaces: Vec<String> = if report.namespaces.is_empty() {
+        vec!["/".to_owned()]
+    } else {
+        report.namespaces.iter().cloned().collect()
+    };
+
+    for ns in namespaces {
+        out.push_str(&format!(
+            "    let b = Arc::clone(bridge);\n    io.ns(\"{ns}\", move |socket| {{\n"
+        ));
+        for ev in &report.event_names {
+            out.push_str(&format!(
+                "        b.register_event_handler(&socket.id, \"{ev}\", Arc::new(|sock, ctx| {{\n\
+                 // TODO: migrate `{ev}` handler logic\n\
+                 let _ = (sock, ctx);\n\
+                 }}));\n"
+            ));
+        }
+        out.push_str("    });\n");
+    }
+    out.push_str("}\n");
+    out
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let target_dir = args.get(2).map(|s| s.as_str()).unwrap_or(".");
+    let target_dir = args
+        .windows(2)
+        .find(|w| w[0] == "--scan")
+        .map(|w| w[1].as_str())
+        .or_else(|| args.get(2).map(|s| s.as_str()))
+        .unwrap_or(".");
+
     let mut report = MigrationScanReport::default();
     scan_directory(Path::new(target_dir), &mut report);
 
     println!("==============================================================");
-    println!("  sio-migrate — Socket.IO to Rust Migration Analyzer v0.1.0");
+    println!("  sio-migrate — Socket.IO to Rust Migration Analyzer v0.2.0");
     println!("==============================================================");
     println!("  Target Path              : {}", target_dir);
     println!("  JS/TS Files Scanned      : {}", report.files_scanned);
-    println!("  Namespaces (.of)         : {}", report.namespaces_detected);
-    println!("  Event Handlers (.on)     : {}", report.event_handlers_detected);
-    println!("  Room Broadcasts (.to/.in): {}", report.room_broadcasts_detected);
+    println!("  Namespaces (.of)         : {} ({:?})", report.namespaces_detected, report.namespaces);
+    println!("  Event Handlers (.on)     : {} ({:?})", report.event_handlers_detected, report.event_names);
+    println!("  Room Broadcasts (.to/.in): {} ({:?})", report.room_broadcasts_detected, report.rooms);
+    println!("  Middleware (.use)        : {}", report.middleware_count);
     println!("  socket.request Retention : {}", report.raw_request_usages);
     println!("  Recommendation           : {}", report.recommended_path);
     println!("  Projected Idle RAM Drop  : ~52 KB/conn -> ~2-6 KB/conn (-88% to -96%)");
     println!("==============================================================");
+
+    if let Some(scaffold_dir) = args.windows(2).find(|w| w[0] == "--scaffold").map(|w| Path::new(&w[1])) {
+        let _ = fs::create_dir_all(scaffold_dir);
+        let _ = fs::write(scaffold_dir.join("gateway.toml"), generate_gateway_toml(&report));
+        let _ = fs::write(scaffold_dir.join("migrated_handlers.rs"), scaffold_rust_handlers(&report));
+        println!("  Scaffolded files written to {}", scaffold_dir.display());
+    }
 }
 
 #[cfg(test)]
@@ -79,12 +283,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_scanner_detects_socketio_patterns_and_request_retention() {
+    fn test_scanner_detects_socketio_patterns_and_ignores_comments() {
         let sample_js = r#"
+            // io.of("/ignored-comment").on("fake", () => {});
+            /* socket.request.headers.ignored */
             const chat = io.of("/chat");
+            chat.use((socket, next) => next());
             chat.on("connection", (socket) => {
                 const cookie = socket.request.headers.cookie;
-                socket.to("room1").emit("hello", "world");
+                socket.on("send_msg", (data) => {
+                    socket.to("room1").emit("hello", data);
+                });
             });
         "#;
         let mut report = MigrationScanReport::default();
@@ -92,9 +301,21 @@ mod tests {
 
         assert_eq!(report.files_scanned, 1);
         assert_eq!(report.namespaces_detected, 1);
-        assert_eq!(report.event_handlers_detected, 1);
+        assert!(report.namespaces.contains("/chat"));
+        assert!(!report.namespaces.contains("/ignored-comment"));
+        assert_eq!(report.event_handlers_detected, 2);
+        assert!(report.event_names.contains("send_msg"));
+        assert!(!report.event_names.contains("fake"));
         assert_eq!(report.room_broadcasts_detected, 1);
+        assert!(report.rooms.contains("room1"));
+        assert_eq!(report.middleware_count, 1);
         assert_eq!(report.raw_request_usages, 1);
         assert!(report.recommended_path.contains("Refactor socket.request"));
+
+        let toml = generate_gateway_toml(&report);
+        assert!(toml.contains("adapter = \"redis\""));
+        let rust_code = scaffold_rust_handlers(&report);
+        assert!(rust_code.contains("io.ns(\"/chat\""));
+        assert!(rust_code.contains("\"send_msg\""));
     }
 }

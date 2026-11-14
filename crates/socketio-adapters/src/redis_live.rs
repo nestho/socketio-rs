@@ -3,7 +3,7 @@
 use crate::adapter::{
     Adapter, AdapterError, BoxFuture, BroadcastOptions, ClusterBroadcastPacket, RemoteSocketInfo,
 };
-use crate::recovery::SessionRecoverySnapshot;
+use crate::recovery::{CsrSnapshotStore, SessionRecoverySnapshot};
 use redis::AsyncCommands;
 use socketio_parser::SharedBytes;
 
@@ -186,6 +186,24 @@ impl Adapter for LiveRedisStreamsAdapter {
                 .map_err(|e| AdapterError::Disconnected(e.to_string()))?;
             Ok(())
         })
+    }
+}
+
+impl CsrSnapshotStore for LiveRedisStreamsAdapter {
+    fn save_snapshot_async(
+        &self,
+        snapshot: SessionRecoverySnapshot,
+        ttl_secs: u64,
+    ) -> BoxFuture<'_, Result<(), AdapterError>> {
+        Box::pin(async move { self.save_csr_snapshot(&snapshot, ttl_secs).await })
+    }
+
+    fn load_snapshot_async(
+        &self,
+        pid: &str,
+    ) -> BoxFuture<'_, Result<Option<SessionRecoverySnapshot>, AdapterError>> {
+        let pid = pid.to_owned();
+        Box::pin(async move { self.load_csr_snapshot(&pid).await })
     }
 }
 
