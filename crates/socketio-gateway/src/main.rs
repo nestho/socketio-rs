@@ -71,9 +71,58 @@ async fn forward_webhook_http1(url: &str, json_body: &str) -> std::io::Result<()
     stream.flush().await
 }
 
+fn print_gateway_help() {
+    println!(
+        "\
+socketio-gateway 0.1.0 — Standalone Polyglot Socket.IO v4/v5 & Engine.IO v4 Edge Gateway
+
+USAGE:
+    socketio-gateway [OPTIONS]
+
+OPTIONS:
+    --serve                         Start the edge HTTP/WS/Polling and control listeners
+    --config <PATH>                 Path to gateway TOML config (default: gateway.toml)
+    --bind <ADDR>                   Override edge bind address (e.g. 0.0.0.0:3000)
+    --webtransport-bind <ADDR>      Enable HTTP/3 WebTransport QUIC endpoint (e.g. 0.0.0.0:3443)
+    --wt-cert <PEM_PATH>            Custom TLS leaf/chain PEM certificate for WebTransport
+    --wt-key <PEM_PATH>             Custom TLS private key PEM for WebTransport
+    -h, --help                      Print this help message and exit
+    -V, --version                   Print version information and exit
+
+ENVIRONMENT VARIABLES:
+    GATEWAY_WEBHOOK_URL             Upstream HTTP/1.1 POST URL for inbound client events
+    REDIS_URL                       Redis URL when recovery.adapter = \"redis\" or \"redis_streams\"
+    NATS_URL                        NATS URL when recovery.adapter = \"nats\" or \"nats_jetstream\"
+    DATABASE_URL                    PostgreSQL URL when recovery.adapter = \"postgres\"
+
+CONTROL API (default 127.0.0.1:3001):
+    POST /_broadcast                {{\"namespace\":\"/\",\"room\":\"chat:1\",\"event\":\"msg\",\"data\":{{...}}}}
+    POST /_rooms/join               {{\"sid\":\"<sid>\",\"room\":\"chat:1\"}}
+    POST /_rooms/leave              {{\"sid\":\"<sid>\",\"room\":\"chat:1\"}}
+    POST /_disconnect               {{\"sid\":\"<sid>\"}}
+    GET  /_presence?room=chat:1     List tracked PresenceMember records for a room
+    GET  /_stats                    JSON counters (active_sessions, active_rooms, recovered_sessions)
+    GET  /healthz                   Readiness probe ({{\"status\":\"ok\",\"shards\":N}})
+    GET  /metrics                   Prometheus text exposition (text/plain; version=0.0.4)
+
+EXAMPLES:
+    socketio-gateway --serve --bind 0.0.0.0:3000
+    socketio-gateway --serve --config ./gateway.toml --webtransport-bind 0.0.0.0:3443
+"
+    );
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "-h" || a == "--help") {
+        print_gateway_help();
+        return;
+    }
+    if args.iter().any(|a| a == "-V" || a == "--version") {
+        println!("socketio-gateway {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     let cfg_path = args
         .windows(2)
         .find(|w| w[0] == "--config")
@@ -263,7 +312,7 @@ async fn main() {
             .adapter
             .as_str()
         {
-            "redis" => {
+            "redis" | "redis_streams" => {
                 let redis_url = std::env::var("REDIS_URL")
                     .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_owned());
                 match socketio_adapters::LiveRedisStreamsAdapter::connect(
@@ -282,7 +331,7 @@ async fn main() {
                     Err(_) => None,
                 }
             }
-            "nats" => {
+            "nats" | "nats_jetstream" => {
                 let nats_url = std::env::var("NATS_URL")
                     .unwrap_or_else(|_| "nats://127.0.0.1:4222".to_owned());
                 let nats_adapter = socketio_adapters::LiveNatsJetStreamAdapter::new(

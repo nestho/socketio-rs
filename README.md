@@ -58,7 +58,18 @@ cargo build --release -p socketio-gateway -p sio-migrate-cli
 
 # 3. Scan an existing Node.js Socket.IO repo and scaffold gateway.toml + Rust handlers
 ./target/release/sio-migrate --scan /path/to/node-app --scaffold ./migration-out
+
+# 4. Print full CLI help for either binary
+./target/release/socketio-gateway --help
+./target/release/sio-migrate --help
+
+# 5. Run native Rust examples
+cargo run -p socketio-server --example echo_server
+cargo run -p socketio-server --example chat_rooms
+cargo run -p socketio-server --example recovery_and_presence
 ```
+
+See [`docs/09-Developer-Guide.md`](./docs/09-Developer-Guide.md) for the full developer reference, `gateway.toml` schema, control API endpoints, webhook payload format, and troubleshooting.
 
 ### Control API Endpoints (`127.0.0.1:3001`)
 

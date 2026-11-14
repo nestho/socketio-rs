@@ -266,8 +266,45 @@ pub fn scaffold_rust_handlers(report: &MigrationScanReport) -> String {
     out
 }
 
+fn print_migrate_help() {
+    println!(
+        "\
+sio-migrate 0.3.0 — Socket.IO (Node.js/TS) to Rust Migration Analyzer & Scaffolder
+
+USAGE:
+    sio-migrate [OPTIONS]
+
+OPTIONS:
+    --scan <DIR>            Directory of JS/TS files to scan (default: .)
+    --scaffold <OUT_DIR>    Generate gateway.toml, migrated_handlers.rs, and MIGRATION_PLAN.md
+    --json                  Emit machine-readable JSON summary instead of banner text
+    -h, --help              Print this help message and exit
+    -V, --version           Print version information and exit
+
+WHAT IT DETECTS:
+    - Namespaces via .of(...) and middleware via .use(...)
+    - Event handlers via .on(...) and room usage via .to(...)/.in(...)/.join(...)
+    - CORS origin configuration and connectionStateRecovery settings
+    - socket.request retention (flags Path A Sidecar vs Path B Native Rust)
+
+EXAMPLES:
+    sio-migrate --scan ./my-node-chat-app
+    sio-migrate --scan ./my-node-chat-app --scaffold ./migration-out
+    sio-migrate --scan ./my-node-chat-app --json
+"
+    );
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "-h" || a == "--help") {
+        print_migrate_help();
+        return;
+    }
+    if args.iter().any(|a| a == "-V" || a == "--version") {
+        println!("sio-migrate {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     let target_dir = args
         .windows(2)
         .find(|w| w[0] == "--scan")
