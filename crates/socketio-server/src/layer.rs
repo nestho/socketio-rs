@@ -4,7 +4,8 @@
 use crate::validate_origin;
 use bytes::Bytes;
 use engineio_core::{
-    handle_polling_request, handle_websocket_upgrade, is_websocket_upgrade, SessionStore,
+    handle_polling_request, handle_websocket_upgrade, is_websocket_upgrade, EngineHandler,
+    SessionStore,
 };
 use http::{header, Request, Response, StatusCode};
 use http_body_util::Full;
@@ -43,11 +44,28 @@ impl Default for LayerConfig {
 pub struct SocketIoLayer {
     store: SessionStore,
     config: LayerConfig,
+    handler: Option<Arc<dyn EngineHandler>>,
 }
 
 impl SocketIoLayer {
     pub fn new(store: SessionStore, config: LayerConfig) -> Self {
-        Self { store, config }
+        Self {
+            store,
+            config,
+            handler: None,
+        }
+    }
+
+    pub fn with_handler(
+        store: SessionStore,
+        config: LayerConfig,
+        handler: Arc<dyn EngineHandler>,
+    ) -> Self {
+        Self {
+            store,
+            config,
+            handler: Some(handler),
+        }
     }
 }
 
@@ -59,6 +77,7 @@ impl<S> Layer<S> for SocketIoLayer {
             inner,
             store: self.store.clone(),
             config: self.config.clone(),
+            handler: self.handler.clone(),
         }
     }
 }
@@ -68,6 +87,7 @@ pub struct SocketIoService<S> {
     inner: S,
     store: SessionStore,
     config: LayerConfig,
+    handler: Option<Arc<dyn EngineHandler>>,
 }
 
 fn forbidden_response(msg: &str) -> Response<Full<Bytes>> {
