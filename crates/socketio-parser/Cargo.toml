@@ -3,7 +3,7 @@ name = "socketio-parser"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Zero-copy SharedBytes Engine.IO v4 / Socket.IO v5 framing with sonic-rs SIMD JSON, MsgPack, binary attachments, and bounded permessage-deflate"
+description = "Zero-copy SharedBytes Engine.IO v4 / Socket.IO v5 framing with sonic-rs SIMD JSON, MsgPack, binary attachments, bounded permessage-deflate, and zstd dictionary delta compression"
 
 [features]
 default = ["msgpack"]
@@ -16,3 +16,4 @@ serde.workspace = true
 serde_json.workspace = true
 sonic-rs.workspace = true
 thiserror.workspace = true
+zstd.workspace = true

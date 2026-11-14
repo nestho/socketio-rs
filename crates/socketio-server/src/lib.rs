@@ -8,12 +8,14 @@ pub mod ack;
 pub mod bridge;
 pub mod extract;
 pub mod layer;
+pub mod presence;
 
 pub mod prelude {
     pub use crate::ack::{AckError, AckTable};
     pub use crate::bridge::SocketIoEngineBridge;
     pub use crate::extract::{AckSender, Bin, Data, EventContext, FromEventContext, State, TryData};
     pub use crate::layer::{LayerConfig, SocketIoLayer, SocketIoService};
+    pub use crate::presence::{PresenceDiff, PresenceMember, PresenceRegistry, PushFallbackHook};
     pub use crate::{
         validate_origin, BroadcastOperator, CacheLinePaddedCounter, NamespaceRegistry,
         ShardedRoomIndex, SocketIo, SocketRef,
@@ -166,6 +168,46 @@ impl ShardedRoomIndex {
             .iter()
             .filter_map(|s| s.read().ok().map(|g| g.rooms.len()))
             .sum()
+    }
+
+    /// Upstream `io.fetchSockets()` parity: lists all socket IDs globally or in `room`.
+    pub fn fetch_sockets(&self, room: Option<&str>) -> Vec<String> {
+        let mut sids = HashSet::new();
+        for shard in &self.shards {
+            if let Ok(guard) = shard.read() {
+                match room {
+                    Some(r) => {
+                        if let Some(members) = guard.rooms.get(r) {
+                            for sid in members {
+                                sids.insert(sid.clone());
+                            }
+                        }
+                    }
+                    None => {
+                        for sid in guard.sockets.keys() {
+                            sids.insert(sid.clone());
+                        }
+                    }
+                }
+            }
+        }
+        sids.into_iter().collect()
+    }
+
+    /// Upstream `io.in(target_room).socketsJoin(join_room)` parity.
+    pub fn sockets_join(&self, target_room: &str, join_room: &str) {
+        let targets = self.fetch_sockets(Some(target_room));
+        for sid in targets {
+            self.join(join_room, &sid);
+        }
+    }
+
+    /// Upstream `io.in(target_room).socketsLeave(leave_room)` parity.
+    pub fn sockets_leave(&self, target_room: &str, leave_room: &str) {
+        let targets = self.fetch_sockets(Some(target_room));
+        for sid in targets {
+            self.leave(leave_room, &sid);
+        }
     }
 
     /// Zero-copy fan-out of an already-encoded `SharedBytes` packet across all shards,

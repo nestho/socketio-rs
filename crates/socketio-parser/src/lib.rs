@@ -204,6 +204,42 @@ pub fn decompress_bounded(
     Ok(SharedBytes::from_vec(out))
 }
 
+/// Compresses `payload` using a previous state snapshot (`prev_dict`) as a `zstd`
+/// dictionary for bandwidth-constrained mobile/slow clients (`S7-T04`).
+pub fn compress_zstd_delta(prev_dict: &[u8], payload: &[u8]) -> Result<SharedBytes, ParseError> {
+    let mut compressor =
+        zstd::bulk::Compressor::with_dictionary(3, prev_dict).map_err(|_| ParseError::CompressionFailed)?;
+    let out = compressor
+        .compress(payload)
+        .map_err(|_| ParseError::CompressionFailed)?;
+    Ok(SharedBytes::from_vec(out))
+}
+
+/// Decompresses a `zstd` dictionary delta frame while enforcing `max_ratio` and `max_output_bytes`.
+pub fn decompress_zstd_delta(
+    prev_dict: &[u8],
+    compressed: &[u8],
+    max_ratio: usize,
+    max_output_bytes: usize,
+) -> Result<SharedBytes, ParseError> {
+    if compressed.is_empty() {
+        return Err(ParseError::EmptyFrame);
+    }
+    let hard_cap = compressed
+        .len()
+        .saturating_mul(max_ratio)
+        .min(max_output_bytes);
+    let mut decompressor = zstd::bulk::Decompressor::with_dictionary(prev_dict)
+        .map_err(|_| ParseError::CompressionFailed)?;
+    let out = decompressor
+        .decompress(compressed, hard_cap)
+        .map_err(|_| ParseError::DecompressionBombDetected {
+            ratio: max_ratio + 1,
+            max_ratio,
+        })?;
+    Ok(SharedBytes::from_vec(out))
+}
+
 /// Parses a Socket.IO JSON event array `["event_name", payload]` using `sonic-rs`
 /// SIMD JSON acceleration (`S2-T01`), falling back cleanly for arbitrary values.
 pub fn parse_event_simd<T: DeserializeOwned>(payload: &[u8]) -> Result<(String, T), ParseError> {
