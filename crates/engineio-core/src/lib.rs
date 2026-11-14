@@ -6,10 +6,15 @@
 //! (mitigating CVE-2026-59724), and explicit write watermarks (128 KiB / 16 KiB).
 
 pub mod driver;
+pub mod polling;
 
 pub use driver::{
     detect_optimal_driver, AdaptiveDriver, DriverCapabilities, IoDriver, IoDriverKind,
     SocketTuningProfile,
+};
+pub use polling::{
+    extract_query_param, generate_sid, handle_polling_request, PollingSession, SessionStore,
+    ENGINEIO_RECORD_SEPARATOR,
 };
 
 use std::fmt;

@@ -34,9 +34,9 @@ This sprint plan breaks down the redesign and port of [`socketio/socket.io`](htt
 - [x] **S1-T03** Configure `SO_REUSEPORT` per-core listener sockets with CPU thread pinning (`core_affinity`) and `TCP_NOTSENT_LOWAT` (16 KiB).
 
 ### Group 1B: HTTP Long-Polling Transport (`hyper`)
-- [ ] **S1-T04** Implement `GET /socket.io/?EIO=4&transport=polling` handshake returning `0{"sid":...}` and holding long-running poll response.
-- [ ] **S1-T05** Implement `POST /socket.io/?EIO=4&transport=polling&sid=...` with streaming `StreamingPayloadGuard` (`maxPayload` checked per `hyper::Body` chunk before heap allocation).
-- [ ] **S1-T06** Enforce strict per-IP/per-SID HTTP request timeouts and automatic session cleanup on aborted HTTP responses (mitigating CVE-2026-59725).
+- [x] **S1-T04** Implement `GET /socket.io/?EIO=4&transport=polling` handshake returning `0{"sid":...}` and holding long-running poll response.
+- [x] **S1-T05** Implement `POST /socket.io/?EIO=4&transport=polling&sid=...` with streaming `StreamingPayloadGuard` (`maxPayload` checked per `hyper::Body` chunk before heap allocation).
+- [x] **S1-T06** Enforce strict per-IP/per-SID HTTP request timeouts and automatic session cleanup on aborted HTTP responses (mitigating CVE-2026-59725).
 
 ### Group 1C: WebSocket Transport & Upgrade FSM
 - [ ] **S1-T07** Integrate `tokio-tungstenite` for RFC 6455 WebSocket upgrade handling on `/socket.io/?EIO=4&transport=websocket&sid=...`.
