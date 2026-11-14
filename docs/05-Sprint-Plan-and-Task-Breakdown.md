@@ -101,27 +101,27 @@ This sprint plan breaks down the redesign and port of [`socketio/socket.io`](htt
 ## Sprint 5: `sio-migrate-cli` AST Analyzer & Security Fuzzing (Weeks 9–10)
 
 ### Group 5A: Automated Migration Analyzer & Assistant (`sio-migrate`)
-- [ ] **S5-T01** Upgrade `sio-migrate-cli` from regex/substring scanning to full JS/TS AST parsing using `swc_ecma_parser` / `tree-sitter`.
-- [ ] **S5-T02** Build Dependency & Event Graph extractor (`io.of`, `socket.on`, `socket.to`, `emitWithAck`, `socket.request`, Redis adapter options).
-- [ ] **S5-T03** Implement Sidecar Config Generator (outputs tailored `gateway.toml`, Envoy/NGINX sticky-session snippet, and `@rust-sio/emitter` drop-in wrapper).
-- [ ] **S5-T04** Implement Native Rust Handler Scaffolder (generates typed `serde` structs + `socketio-server` handler skeletons + wire-parity contract tests).
+- [x] **S5-T01** Upgrade `sio-migrate-cli` from regex/substring scanning to full JS/TS AST parsing using `swc_ecma_parser` / `tree-sitter`.
+- [x] **S5-T02** Build Dependency & Event Graph extractor (`io.of`, `socket.on`, `socket.to`, `emitWithAck`, `socket.request`, Redis adapter options).
+- [x] **S5-T03** Implement Sidecar Config Generator (outputs tailored `gateway.toml`, Envoy/NGINX sticky-session snippet, and `@rust-sio/emitter` drop-in wrapper).
+- [x] **S5-T04** Implement Native Rust Handler Scaffolder (generates typed `serde` structs + `socketio-server` handler skeletons + wire-parity contract tests).
 
 ### Group 5B: Security Fuzzing & Adversarial Testing
-- [ ] **S5-T05** Add `cargo-fuzz` (`libFuzzer`) targets for `decode_v5_packet`, Engine.IO polling batch framing, and `validate_sid`.
-- [ ] **S5-T06** Write automated adversarial test suite covering CVE-2026-59724 (crafted SID), CVE-2026-59725 (binary POST exhaustion), decompression bombs, and CSWSH `Origin` bypasses.
+- [x] **S5-T05** Add `cargo-fuzz` (`libFuzzer`) targets for `decode_v5_packet`, Engine.IO polling batch framing, and `validate_sid`.
+- [x] **S5-T06** Write automated adversarial test suite covering CVE-2026-59724 (crafted SID), CVE-2026-59725 (binary POST exhaustion), decompression bombs, and CSWSH `Origin` bypasses.
 
 ---
 
 ## Sprint 6: Benchmarking, Soak Testing & Strangler Fig Cutover (Weeks 11–12)
 
 ### Group 6A: Multi-Shard Load & Benchmark Harness
-- [ ] **S6-T01** Stand up multi-shard benchmark harness (modeled on `anycable/nodejs-websocket-bench`) measuring 1M idle connections, 40-publisher fan-out, and 20K reconnect storms.
-- [ ] **S6-T02** Run WiFi-jitter test (~2s TCP drops every 15s) verifying 100% delivery via `CsrReplayLog` / Redis Streams.
+- [x] **S6-T01** Stand up multi-shard benchmark harness (modeled on `anycable/nodejs-websocket-bench`) measuring 1M idle connections, 40-publisher fan-out, and 20K reconnect storms.
+- [x] **S6-T02** Run WiFi-jitter test (~2s TCP drops every 15s) verifying 100% delivery via `CsrReplayLog` / Redis Streams.
 
 ### Group 6B: Long-Running Soak & Hardware Profiling
-- [ ] **S6-T03** Execute 72-hour continuous churn soak test verifying flat RSS memory (`jemalloc` vs `ptmalloc2`) and zero leaked tasks.
-- [ ] **S6-T04** Profile CPU cache-line contention using `perf c2c` on Linux to confirm zero false sharing across worker cores.
+- [x] **S6-T03** Execute 72-hour continuous churn soak test verifying flat RSS memory (`jemalloc` vs `ptmalloc2`) and zero leaked tasks.
+- [x] **S6-T04** Profile CPU cache-line contention using `perf c2c` on Linux to confirm zero false sharing across worker cores.
 
 ### Group 6C: Production Strangler Fig Migration Playbook
-- [ ] **S6-T05** Validate Envoy/NGINX consistent-hash (`sid`) routing + dual-adapter Node.js/Rust Redis bridge in staging.
-- [ ] **S6-T06** Execute 5% -> 25% -> 50% -> 100% canary cutover with automated `connect_error` rollback triggers.
+- [x] **S6-T05** Validate Envoy/NGINX consistent-hash (`sid`) routing + dual-adapter Node.js/Rust Redis bridge in staging.
+- [x] **S6-T06** Execute 5% -> 25% -> 50% -> 100% canary cutover with automated `connect_error` rollback triggers.

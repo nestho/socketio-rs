@@ -1,0 +1,58 @@
+# Envoy L7 Strangler Fig Canary Configuration (Node.js -> Rust socketio-rs) (`S6-T05`, `S6-T06`)
+static_resources:
+  listeners:
+    - name: socketio_edge_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 443
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_socketio
+                common_http_protocol_options:
+                  max_connection_duration: 3600s
+                upgrade_configs:
+                  - upgrade_type: websocket
+                route_config:
+                  name: socketio_routes
+                  virtual_hosts:
+                    - name: realtime_app
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/socket.io/"
+                          route:
+                            # Stage 3 -> 4 Canary Weights (5% -> 25% -> 50% -> 100%)
+                            weighted_clusters:
+                              clusters:
+                                - name: nodejs_socketio_legacy
+                                  weight: 75
+                                - name: rust_socketio_gateway
+                                  weight: 25
+                            hash_policy:
+                              - query_parameter:
+                                  name: sid
+  clusters:
+    - name: nodejs_socketio_legacy
+      type: STRICT_DNS
+      lb_policy: RING_HASH
+      load_assignment:
+        cluster_name: nodejs_socketio_legacy
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: nodejs-ws, port_value: 3000 }
+    - name: rust_socketio_gateway
+      type: STRICT_DNS
+      lb_policy: RING_HASH
+      load_assignment:
+        cluster_name: rust_socketio_gateway
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: socketio-gateway, port_value: 3000 }

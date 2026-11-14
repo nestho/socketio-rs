@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 //! `sio-migrate` scans Node.js / TypeScript Socket.IO repositories to detect
 //! patterns (`io.of`, `socket.on`, `socket.to`, `socket.request` retention),
-//! estimate RAM/latency savings, and recommend Path A (Sidecar) vs. Path B (Native Rust).
+//! estimate RAM/latency savings, and scaffold Sidecar or Native Rust code.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
