@@ -315,7 +315,12 @@ async fn main() {
                                 (&Method::GET, "/metrics") => Response::builder()
                                     .status(StatusCode::OK)
                                     .header("Content-Type", "text/plain; version=0.0.4")
-                                    .body(Full::new(Bytes::from(met_inner.render_prometheus())))
+                                    .body(Full::new(Bytes::from(
+                                        met_inner.render_prometheus_live(
+                                            bs_inner.active_session_count(),
+                                            bs_inner.recovered_session_count(),
+                                        ),
+                                    )))
                                     .unwrap_or_else(|_| Response::new(Full::new(Bytes::new()))),
                                 (&Method::POST, "/_broadcast") => {
                                     let Ok(collected) = req.into_body().collect().await else {
@@ -389,12 +394,13 @@ async fn main() {
             let prefix_shard = mount_prefix.clone();
             let origins_shard = Arc::clone(&allowed_origins);
             let met_shard = Arc::clone(&metrics);
+            let driver_shard = driver.clone();
             tokio::spawn(async move {
                 loop {
                     let Ok((stream, _peer)) = edge_listener.accept().await else {
                         continue;
                     };
-                    let _ = stream.set_nodelay(true);
+                    driver_shard.tune_accepted_stream(&stream);
                     let store_clone = store_shard.clone();
                     let bridge_clone: Arc<dyn engineio_core::EngineHandler> =
                         Arc::clone(&bridge_shard) as Arc<dyn engineio_core::EngineHandler>;

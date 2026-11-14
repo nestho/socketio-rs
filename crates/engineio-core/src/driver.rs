@@ -95,6 +95,13 @@ pub trait IoDriver: Send + Sync {
         }
         Ok(listeners)
     }
+
+    /// Applies low-latency TCP tuning (`TCP_NODELAY`, `SO_KEEPALIVE`) to an accepted socket.
+    fn tune_accepted_stream(&self, stream: &tokio::net::TcpStream) {
+        let sock_ref = socket2::SockRef::from(stream);
+        let _ = sock_ref.set_nodelay(self.tuning().tcp_nodelay);
+        let _ = sock_ref.set_keepalive(true);
+    }
 }
 
 /// Configuration for Linux 6.x `io_uring` thread-per-core completion rings (`--features io-uring`).

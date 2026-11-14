@@ -311,8 +311,38 @@ fn main() {
         let _ = fs::create_dir_all(scaffold_dir);
         let _ = fs::write(scaffold_dir.join("gateway.toml"), generate_gateway_toml(&report));
         let _ = fs::write(scaffold_dir.join("migrated_handlers.rs"), scaffold_rust_handlers(&report));
+        let _ = fs::write(scaffold_dir.join("MIGRATION_PLAN.md"), generate_migration_plan_md(&report));
         println!("  Scaffolded files written to {}", scaffold_dir.display());
     }
+}
+
+/// Generates a Markdown migration checklist tailored to the scanned repository.
+pub fn generate_migration_plan_md(report: &MigrationScanReport) -> String {
+    format!(
+        "# Socket.IO to Rust (`socketio-rs`) Migration Plan\n\n\
+         - **Files Scanned**: {}\n\
+         - **Namespaces Detected**: {} (`{:?}`)\n\
+         - **Events Detected**: {} (`{:?}`)\n\
+         - **Rooms Detected**: {} (`{:?}`)\n\
+         - **Middleware (`.use`)**: {}\n\
+         - **CSR Configured**: {}\n\
+         - **`socket.request` Retention Count**: {}\n\
+         - **Recommended Path**: {}\n\n\
+         ## Generated Files\n\
+         1. `gateway.toml` — Pre-configured edge, security (`allowed_origins`), and Redis/CSR settings.\n\
+         2. `migrated_handlers.rs` — Native Rust `socketio_server` namespace and event handler skeletons.\n",
+        report.files_scanned,
+        report.namespaces_detected,
+        report.namespaces,
+        report.event_handlers_detected,
+        report.event_names,
+        report.room_broadcasts_detected,
+        report.rooms,
+        report.middleware_count,
+        report.csr_configured,
+        report.raw_request_usages,
+        report.recommended_path,
+    )
 }
 
 #[cfg(test)]

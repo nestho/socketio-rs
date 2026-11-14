@@ -4,6 +4,7 @@ use socketio_server::CacheLinePaddedCounter;
 use std::sync::Arc;
 
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 pub struct GatewayMetrics {
     pub active_connections: CacheLinePaddedCounter,
     pub broadcasts_total: CacheLinePaddedCounter,
@@ -17,7 +18,19 @@ impl GatewayMetrics {
         Arc::new(Self::default())
     }
 
+    #[allow(dead_code)]
     pub fn render_prometheus(&self) -> String {
+        self.render_prometheus_live(
+            self.active_connections.get() as usize,
+            self.recovered_sessions_total.get(),
+        )
+    }
+
+    pub fn render_prometheus_live(
+        &self,
+        active_connections: usize,
+        recovered_sessions: u64,
+    ) -> String {
         format!(
             "# HELP socketio_rs_active_connections Active Engine.IO/Socket.IO connections\n\
              # TYPE socketio_rs_active_connections gauge\n\
@@ -34,10 +47,10 @@ impl GatewayMetrics {
              # HELP socketio_rs_cswsh_rejections_total Requests rejected by CSWSH Origin policy\n\
              # TYPE socketio_rs_cswsh_rejections_total counter\n\
              socketio_rs_cswsh_rejections_total {}\n",
-            self.active_connections.get(),
+            active_connections,
             self.broadcasts_total.get(),
             self.dropped_slow_consumers_total.get(),
-            self.recovered_sessions_total.get(),
+            recovered_sessions,
             self.cswsh_rejections_total.get(),
         )
     }
