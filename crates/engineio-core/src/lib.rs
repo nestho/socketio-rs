@@ -7,6 +7,7 @@
 
 pub mod driver;
 pub mod polling;
+pub mod webtransport;
 pub mod ws;
 
 pub use driver::{
@@ -16,6 +17,9 @@ pub use driver::{
 pub use polling::{
     extract_query_param, generate_sid, handle_polling_request, PollingSession, SessionStore,
     ENGINEIO_RECORD_SEPARATOR,
+};
+pub use webtransport::{
+    compute_jittered_duration_ms, WebTransportConfig, WebTransportSessionGuard,
 };
 pub use ws::{handle_websocket_upgrade, is_websocket_upgrade, UpgradeFsm};
 

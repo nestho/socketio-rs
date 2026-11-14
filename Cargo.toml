@@ -30,6 +30,7 @@ sonic-rs = "0.3"
 thiserror = "2.0"
 tokio = { version = "1.40", features = ["full"] }
 tokio-tungstenite = "0.26"
+toml = "0.8"
 tower = { version = "0.5", features = ["util"] }
 engineio-core = { path = "crates/engineio-core" }
 socketio-parser = { path = "crates/socketio-parser" }

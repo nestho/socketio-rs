@@ -3,7 +3,7 @@ name = "socketio-gateway"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Standalone polyglot Socket.IO edge gateway binary"
+description = "Standalone polyglot Socket.IO edge gateway binary with HTTP/gRPC broadcast API, WebTransport H3 readiness, Prometheus /metrics, and Linux jemalloc"
 
 [dependencies]
 bytes.workspace = true
@@ -11,8 +11,14 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
+toml.workspace = true
 engineio-core.workspace = true
 socketio-parser.workspace = true
 socketio-server.workspace = true
 socketio-adapters.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tikv-jemallocator = "0.6"
