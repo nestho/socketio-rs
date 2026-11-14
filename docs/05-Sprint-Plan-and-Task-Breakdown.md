@@ -67,7 +67,7 @@ This sprint plan breaks down the redesign and port of [`socketio/socket.io`](htt
 ## Sprint 3: Official E2E Compliance & `socketio-adapters` (Weeks 5–6)
 
 ### Group 3A: Official Socket.IO Compliance Suite
-- [x] **S3-T01** Stand up the official `socketio/socket.io` Node.js E2E test runner in CI targeting the Rust server over `127.0.0.1:3000`.
+- [ ] **S3-T01** Stand up the official `socketio/socket.io` Node.js E2E test runner in CI targeting the Rust server over `127.0.0.1:3000` (in-process Rust `hyper` + `tokio-tungstenite` E2E suite in `live_gateway_e2e.rs` passes 6/6).
 - [x] **S3-T02** Verify 100% pass rate for Engine.IO v4, Socket.IO v5 (and optional `v4` feature flag), binary attachments, namespaces, rooms, and acks.
 
 ### Group 3B: Durable Connection State Recovery (CSR)
