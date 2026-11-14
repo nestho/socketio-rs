@@ -1,24 +1,35 @@
 ![socketio-rs](./assets/logo.svg)
 
-**Wire-compatible [Socket.IO v4/v5](https://socket.io/docs/v4/how-it-works/) & [Engine.IO v4](https://socket.io/docs/v4/engine-io-protocol/) engine in pure safe Rust (`#![forbid(unsafe_code)]`)** — built for predictable tail latency, native HTTP/3 WebTransport, durable Connection State Recovery (CSR), and zero-rewrite adoption from any backend language.
+# `socketio-rs`
 
-> **Release Status (`v0.1.0` Preview):** `53/53` workspace tests and `cargo clippy --workspace --all-targets -- -D warnings` pass with `0` warnings. External Node.js `socket.io-client@4.x` compliance runs and 72-hour Linux soak benchmarks are scheduled before `v1.0.0` GA.
+**A memory-safe, wire-compatible [Socket.IO v4/v5](https://socket.io/docs/v4/how-it-works/) and [Engine.IO v4](https://socket.io/docs/v4/engine-io-protocol/) engine in pure Rust (`#![forbid(unsafe_code)]`)** — engineered for predictable tail latency, native HTTP/3 WebTransport, durable Connection State Recovery (CSR), and zero-rewrite adoption from any backend language.
 
-[Why `socketio-rs`?](#why-socketio-rs) • [Comparison](#technical-comparison) • [Architecture](#architecture) • [Quick Start](#quick-start) • [Developer Guide](./docs/09-Developer-Guide.md) • [Benchmarks](#verified-benchmarks--status)
+[About](#about) • [Why `socketio-rs`?](#why-socketio-rs) • [Comparison](#technical-comparison) • [Architecture](#architecture) • [Quick Start](#quick-start) • [Developer Guide](./docs/09-Developer-Guide.md) • [Benchmarks](#verified-benchmarks--status)
+
+> **Status (`v0.1.0` Preview):** `53/53` workspace tests and `cargo clippy --workspace --all-targets -- -D warnings` pass with `0` warnings. External Node.js `socket.io-client@4.x` compliance runs and 72-hour Linux soak benchmarks are scheduled before `v1.0.0` GA.
+
+---
+
+## About
+
+`socketio-rs` replaces the Node.js `socket.io` server layer without breaking existing `socket.io-client@4.x` browsers, mobile apps, or microservices. You can adopt it in two ways:
+
+1. **Zero-Rewrite Polyglot Sidecar (`socketio-gateway`)**: Keep your business logic in **Python, Node.js, Go, PHP, Ruby, or Java**. `socketio-gateway` terminates WebSocket, HTTP long-polling, and HTTP/3 WebTransport connections at the edge, forwards inbound client events to your backend over HTTP webhooks (`webhook_url`), and exposes a local JSON Control API (`/_broadcast`, `/_rooms/join`, `/_rooms/leave`, `/_disconnect`).
+2. **Native Rust Embedding (`socketio-server` + `engineio-core`)**: Embed `SocketIo`, `SocketIoEngineBridge`, and `SocketIoLayer` (`tower::Layer`) directly into your `hyper` or `axum` service with Axum-style typed extractors (`Data<T>`, `AckSender`, `State<S>`).
 
 ---
 
 ## Why `socketio-rs`?
 
-Teams operating high-concurrency chat, notifications, and live telemetry hit structural bottlenecks in both **Node.js `socket.io`** and **C++ `uWebSockets.js` (`uWS`)**:
+Teams scaling real-time chat, notifications, and live telemetry hit structural walls in both **Node.js `socket.io`** and **C++ `uWebSockets.js` (`uWS`)**:
 
-| Runtime | Production Bottlenecks Solved by `socketio-rs` |
+| Runtime | Production Weaknesses Addressed by `socketio-rs` |
 | :--- | :--- |
-| **[`socketio/socket.io`](https://github.com/socketio/socket.io)** (Node.js) | Single-threaded V8 event loop (~52 KB idle RAM/conn); silent ~50% event drops across multi-process deployments without an external adapter ([Ably](https://ably.com/topic/socketio)); empty room map memory leaks ([Issue #1736](https://github.com/socketio/socket.io/issues/1736)); `EIO=3/4` reconnect leaks ([Issue #3477](https://github.com/socketio/socket.io/issues/3477)); unbounded `writeBuffer` OOM risk on slow clients ([Issue #3582](https://github.com/socketio/socket.io/issues/3582)); no built-in Prometheus metrics. |
+| **[`socketio/socket.io`](https://github.com/socketio/socket.io)** (Node.js) | Single-threaded V8 event loop (~52 KB idle RAM/conn); silent ~50% event drops across multi-process deployments without an external adapter ([Ably](https://ably.com/topic/socketio)); empty room map memory leaks ([Issue #1736](https://github.com/socketio/socket.io/issues/1736)); `EIO=3/4` reconnect leaks ([Issue #3477](https://github.com/socketio/socket.io/issues/3477)); unbounded `writeBuffer` OOM risk on slow clients ([Issue #3582](https://github.com/socketio/socket.io/issues/3582)); no built-in Prometheus observability. |
 | **[`uWebSockets.js`](https://github.com/uNetworking/uWebSockets.js)** (C++ / Node) | Fast raw I/O, but invokes hard C++ `std::terminate()` crashes if any async handler misses `onAborted()`—bypassing Node `uncaughtException` ([uWS #1296](https://github.com/uNetworking/uWebSockets.js/issues/1296)); recurring Socket.IO `uWS.HttpResponse` lifecycle and room-on-upgrade bugs ([Issue #5066](https://github.com/socketio/socket.io/issues/5066), [Issue #4443](https://github.com/socketio/socket.io/issues/4443)); no built-in rooms, CSR, HTTP/3 WebTransport, or polyglot sidecar mode. |
 | **[`Totodore/socketioxide`](https://github.com/Totodore/socketioxide)** (Rust) | Solid native Rust library, but Rust-only (no standalone sidecar gateway or JS/TS migration CLI) and HTTP/3 WebTransport remains an open issue ([Issue #261](https://github.com/Totodore/socketioxide/issues/261)). |
 
-Read the full researched breakdown in [`docs/08-Motivation-and-uWS-Comparison.md`](./docs/08-Motivation-and-uWS-Comparison.md) and explore the interactive flow in [`docs/interactive-comparison.html`](./docs/interactive-comparison.html).
+See [`docs/08-Motivation-and-uWS-Comparison.md`](./docs/08-Motivation-and-uWS-Comparison.md) and the interactive browser visualization in [`docs/interactive-comparison.html`](./docs/interactive-comparison.html).
 
 ---
 
@@ -43,8 +54,6 @@ Read the full researched breakdown in [`docs/08-Motivation-and-uWS-Comparison.md
 
 ## Architecture
 
-Adopt `socketio-rs` without rewriting your existing backend, or embed it directly in Rust:
-
 ```text
 Clients (Browser / Mobile / IoT)
    │  HTTP Long-Polling • WebSocket • HTTP/3 WebTransport
@@ -67,14 +76,9 @@ Clients (Browser / Mobile / IoT)
 
 ## Quick Start
 
-### 1. Verify Tests & Lints
+### Path A — Polyglot Sidecar (`socketio-gateway`)
 
-```bash
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
-
-### 2. Run the Polyglot Sidecar Gateway (`Path A`)
+Build and start the edge gateway (HTTP/WS on `:3000`, Control API on `:3001`, HTTP/3 WebTransport on UDP `:3443`):
 
 ```bash
 cargo build --release -p socketio-gateway -p sio-migrate-cli
@@ -82,7 +86,39 @@ cargo build --release -p socketio-gateway -p sio-migrate-cli
 ./target/release/socketio-gateway --serve --bind 0.0.0.0:3000 --webtransport-bind 0.0.0.0:3443
 ```
 
-### 3. Run Native Rust Examples (`Path B`)
+Broadcast to any room from **any language** by sending a JSON `POST` to `/_broadcast` on `127.0.0.1:3001`:
+
+```json
+{
+  "namespace": "/",
+  "room": "chat:1",
+  "event": "message",
+  "data": { "user": "nestho", "text": "hello from sidecar" }
+}
+```
+
+### Path B — Native Rust (`socketio-server`)
+
+```rust
+use socketio_server::prelude::*;
+use std::sync::Arc;
+
+let io = Arc::new(SocketIo::new(4));
+io.use_ns("/chat", |_sid, auth| {
+    if auth.get("token").is_some() { Ok(()) } else { Err("unauthorized".into()) }
+});
+
+let bridge = SocketIoEngineBridge::new(Arc::clone(&io));
+let b_ns = Arc::clone(&bridge);
+io.ns("/chat", move |socket| {
+    socket.join("general");
+    b_ns.register_event_handler(&socket.id, "ping", Arc::new(|_sock, ctx| {
+        AckSender::from_context(&ctx).send(&"pong");
+    }));
+});
+```
+
+Run the full included examples:
 
 ```bash
 cargo run -p socketio-server --example echo_server
@@ -90,7 +126,7 @@ cargo run -p socketio-server --example chat_rooms
 cargo run -p socketio-server --example recovery_and_presence
 ```
 
-### 4. Analyze & Scaffold an Existing Node.js Repo (`sio-migrate`)
+### Automated Node.js Migration (`sio-migrate`)
 
 ```bash
 ./target/release/sio-migrate --help
@@ -137,14 +173,14 @@ cargo run -p socketio-server --example recovery_and_presence
 | `socketio-gateway` | [`crates/socketio-gateway`](./crates/socketio-gateway) | Standalone polyglot edge binary (`tikv-jemallocator` on Linux), Control API, webhooks |
 | `sio-migrate-cli` | [`crates/sio-migrate-cli`](./crates/sio-migrate-cli) | Comment/string-aware JS/TS scanner and `gateway.toml` / Rust handler scaffolder |
 
-### Documentation Index
+### Documentation & Governance
 
+- **[Documentation Hub](./docs/README.md)** — Full index of guides, HLD, vision, and audit reports
 - **[Developer Guide](./docs/09-Developer-Guide.md)** — `gateway.toml` schema, Control API, webhooks, clustering, and troubleshooting
-- **[Motivation & uWS Comparison](./docs/08-Motivation-and-uWS-Comparison.md)** — Detailed engineering rationale and upstream issue analysis
+- **[Motivation & `uWebSockets.js` Comparison](./docs/08-Motivation-and-uWS-Comparison.md)** — Engineering rationale and upstream issue analysis
 - **[Interactive Comparison](./docs/interactive-comparison.html)** — Visual handshake, fan-out, and backpressure animation
-- **[Architecture & Plans](./docs/)** — [Deep Analysis](./docs/01-Deep-Analysis-and-Comparison-Report.md) • [HLD](./docs/02-High-Level-Design-HLD.md) • [Visionary Plan](./docs/03-Visionary-Development-and-Transformation-Plan.md) • [Migration Spec](./docs/04-Developer-Migration-Guide-and-Assistant-Spec.md) • [Sprint Backlog](./docs/05-Sprint-Plan-and-Task-Breakdown.md)
 - **Governance** — [SECURITY.md](./SECURITY.md) • [CONTRIBUTING.md](./CONTRIBUTING.md) • [CHANGELOG.md](./CHANGELOG.md) • [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
 
 ## License
 
-Dual-licensed under **MIT** or **Apache-2.0**.
+Dual-licensed under [MIT](./LICENSE-MIT) or [Apache-2.0](./LICENSE-APACHE).
