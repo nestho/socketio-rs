@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" width="640" height="160" role="img" aria-label="socketio-rs logo">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1020" />
+      <stop offset="100%" stop-color="#151e38" />
+    </linearGradient>
+    <linearGradient id="rustGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb923c" />
+      <stop offset="100%" stop-color="#ea580c" />
+    </linearGradient>
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#818cf8" />
+    </linearGradient>
+  </defs>
+
+  <rect x="2" y="2" width="636" height="156" rx="18" fill="url(#bgGrad)" stroke="#243158" stroke-width="2" />
+
+  <!-- Outer Rust/Signal Ring -->
+  <g transform="translate(86, 80)">
+    <circle cx="0" cy="0" r="46" fill="none" stroke="url(#rustGrad)" stroke-width="6" stroke-dasharray="14 6" />
+    <circle cx="0" cy="0" r="34" fill="#0f172a" stroke="url(#waveGrad)" stroke-width="3" />
+    <!-- Bidirectional Socket.IO Lightning / Signal Motif -->
+    <path d="M-12,-8 L10,-16 L2,-2 L14,8 L-10,16 L-2,2 Z" fill="url(#rustGrad)" />
+    <circle cx="0" cy="-46" r="4.5" fill="#38bdf8" />
+    <circle cx="40" cy="23" r="4.5" fill="#38bdf8" />
+    <circle cx="-40" cy="23" r="4.5" fill="#38bdf8" />
+  </g>
+
+  <!-- Wordmark -->
+  <text x="162" y="78" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace" font-size="44" font-weight="800" fill="#f1f5f9" letter-spacing="-0.5">
+    socketio<tspan fill="#fb923c">-rs</tspan>
+  </text>
+  <text x="164" y="108" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="500" fill="#93a4d4" letter-spacing="0.4">
+    Memory-Safe Rust Real-Time Engine &amp; Polyglot Sidecar Gateway
+  </text>
+  <rect x="164" y="120" width="118" height="4" rx="2" fill="url(#rustGrad)" />
+  <rect x="288" y="120" width="76" height="4" rx="2" fill="url(#waveGrad)" />
+</svg>
