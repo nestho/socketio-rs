@@ -47,7 +47,7 @@ async fn live_engineio_to_socketio_v5_bridge_roundtrip() {
 
     bridge.on_message(sid, "21[\"ping\",{}]");
     let ack_reply = out_rx.recv().await.expect("ack reply");
-    assert_eq!(ack_reply, "431[\"ack\",\"pong\"]");
+    assert_eq!(ack_reply, "431[\"pong\"]");
 
     bridge.on_message(sid, "2[\"echo\",{\"msg\":\"hello\"}]");
     let echo_reply = out_rx.recv().await.expect("echo reply");

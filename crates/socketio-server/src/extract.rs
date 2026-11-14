@@ -2,7 +2,7 @@
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use socketio_parser::{encode_event_simd, encode_v5_packet, PacketType, SharedBytes, SocketIoPacket};
+use socketio_parser::{encode_ack_simd, encode_v5_packet, PacketType, SharedBytes, SocketIoPacket};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -53,7 +53,7 @@ impl AckSender {
         let Some(ack_id) = self.ack_id else {
             return false;
         };
-        let Ok(payload) = encode_event_simd("ack", data) else {
+        let Ok(payload) = encode_ack_simd(data) else {
             return false;
         };
         let pkt = SocketIoPacket {

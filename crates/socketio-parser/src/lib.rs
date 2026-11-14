@@ -278,6 +278,13 @@ pub fn encode_event_simd<T: Serialize>(event: &str, data: &T) -> Result<SharedBy
     Ok(SharedBytes::from_vec(bytes))
 }
 
+/// Serializes a Socket.IO acknowledgement argument array `[data]` using `sonic-rs` SIMD JSON.
+pub fn encode_ack_simd<T: Serialize>(data: &T) -> Result<SharedBytes, ParseError> {
+    let bytes =
+        sonic_rs::to_vec(&(data,)).map_err(|e| ParseError::JsonError(e.to_string()))?;
+    Ok(SharedBytes::from_vec(bytes))
+}
+
 /// Encodes and decodes Socket.IO packets in compact MsgPack format (`S2-T02`).
 #[cfg(feature = "msgpack")]
 pub mod msgpack {
