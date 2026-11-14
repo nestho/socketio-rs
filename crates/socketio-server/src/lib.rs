@@ -122,14 +122,15 @@ impl ShardedRoomIndex {
         out
     }
 
-    /// Removes a socket from its owning shard and all joined rooms.
+    /// Removes a socket from its owning shard and all joined rooms, pruning empty rooms (Issue #1736).
     pub fn unregister_socket(&self, sid: &str) {
         let idx = self.shard_for_socket(sid);
         if let Ok(mut guard) = self.shards[idx].write() {
             guard.sockets.remove(sid);
-            for members in guard.rooms.values_mut() {
+            guard.rooms.retain(|_, members| {
                 members.remove(sid);
-            }
+                !members.is_empty()
+            });
         }
     }
 
@@ -147,10 +148,24 @@ impl ShardedRoomIndex {
     pub fn leave(&self, room: &str, sid: &str) {
         let idx = self.shard_for_socket(sid);
         if let Ok(mut guard) = self.shards[idx].write() {
-            if let Some(set) = guard.rooms.get_mut(room) {
+            let empty = if let Some(set) = guard.rooms.get_mut(room) {
                 set.remove(sid);
+                set.is_empty()
+            } else {
+                false
+            };
+            if empty {
+                guard.rooms.remove(room);
             }
         }
+    }
+
+    /// Returns total active (non-empty) room entries across all shards.
+    pub fn active_room_count(&self) -> usize {
+        self.shards
+            .iter()
+            .filter_map(|s| s.read().ok().map(|g| g.rooms.len()))
+            .sum()
     }
 
     /// Zero-copy fan-out of an already-encoded `SharedBytes` packet across all shards,
