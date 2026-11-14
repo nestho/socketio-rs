@@ -115,7 +115,7 @@ async fn main() {
             .parse()
             .expect("valid bridge SocketAddr");
 
-        let store = SessionStore::new(engine_cfg);
+        let store = SessionStore::new(engine_cfg.clone());
         let bridge = if gw_cfg.recovery.enabled {
             socketio_server::bridge::SocketIoEngineBridge::with_recovery(
                 Arc::clone(&io),
@@ -156,7 +156,31 @@ async fn main() {
             .await
             .expect("failed to bind bridge TCP listener");
 
-        println!("  Edge Socket.IO Listening : http://{edge_addr}/socket.io/");
+        if let Some(wt_bind) = args.windows(2).find(|w| w[0] == "--webtransport-bind") {
+            if gw_cfg.engine.enable_webtransport_h3 {
+                let wt_addr: SocketAddr = wt_bind[1]
+                    .parse()
+                    .expect("valid --webtransport-bind SocketAddr");
+                let wt_cfg_engine = engine_cfg.clone();
+                let wt_handler: Arc<dyn engineio_core::EngineHandler> =
+                    Arc::clone(&bridge) as Arc<dyn engineio_core::EngineHandler>;
+                println!("  WebTransport HTTP/3 UDP  : quic://{wt_addr}/socket.io/");
+                tokio::spawn(async move {
+                    if let Err(err) = engineio_core::serve_webtransport_endpoint(
+                        wt_addr,
+                        wt_cfg_engine,
+                        Some(wt_handler),
+                    )
+                    .await
+                    {
+                        eprintln!("WebTransport endpoint error: {err}");
+                    }
+                });
+            }
+        }
+
+        let mount_prefix = gw_cfg.server.path.trim_end_matches('/').to_owned();
+        println!("  Edge Socket.IO Listening : http://{edge_addr}{mount_prefix}/");
         println!("  Control/Broadcast API    : http://{bridge_addr}/_broadcast");
 
         let io_bridge = Arc::clone(&io);
@@ -244,12 +268,14 @@ async fn main() {
                     let store_clone = store.clone();
                     let bridge_clone: Arc<dyn engineio_core::EngineHandler> =
                         Arc::clone(&bridge) as Arc<dyn engineio_core::EngineHandler>;
+                    let prefix_outer = mount_prefix.clone();
                     tokio::spawn(async move {
                         let svc = service_fn(move |req| {
                             let s = store_clone.clone();
                             let b = Arc::clone(&bridge_clone);
+                            let p = prefix_outer.clone();
                             async move {
-                                let resp = if req.uri().path().starts_with("/socket.io") {
+                                let resp = if req.uri().path().starts_with(p.as_str()) {
                                     if is_websocket_upgrade(&req) {
                                         handle_websocket_upgrade(req, s, Some(b)).await
                                     } else {

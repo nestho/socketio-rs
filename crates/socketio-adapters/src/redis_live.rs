@@ -3,6 +3,7 @@
 use crate::adapter::{
     Adapter, AdapterError, BoxFuture, BroadcastOptions, ClusterBroadcastPacket, RemoteSocketInfo,
 };
+use crate::recovery::SessionRecoverySnapshot;
 use redis::AsyncCommands;
 use socketio_parser::SharedBytes;
 
@@ -27,6 +28,54 @@ impl LiveRedisStreamsAdapter {
             stream_key: stream_key.into(),
             client,
         })
+    }
+
+    pub fn csr_snapshot_key(&self, pid: &str) -> String {
+        format!("{}:csr:{pid}", self.stream_key)
+    }
+
+    /// Persists a `SessionRecoverySnapshot` in Redis with TTL matching `max_disconnection_duration_ms`.
+    pub async fn save_csr_snapshot(
+        &self,
+        snapshot: &SessionRecoverySnapshot,
+        ttl_secs: u64,
+    ) -> Result<(), AdapterError> {
+        let json = serde_json::to_string(snapshot)
+            .map_err(|e| AdapterError::Serialization(e.to_string()))?;
+        let key = self.csr_snapshot_key(&snapshot.pid);
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| AdapterError::Disconnected(e.to_string()))?;
+        let _: () = conn
+            .set_ex(key, json, ttl_secs.max(1))
+            .await
+            .map_err(|e| AdapterError::Disconnected(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Atomically fetches and deletes a persisted `SessionRecoverySnapshot` from Redis.
+    pub async fn load_csr_snapshot(
+        &self,
+        pid: &str,
+    ) -> Result<Option<SessionRecoverySnapshot>, AdapterError> {
+        let key = self.csr_snapshot_key(pid);
+        let mut conn = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| AdapterError::Disconnected(e.to_string()))?;
+        let raw: Option<String> = conn
+            .get_del(key)
+            .await
+            .map_err(|e| AdapterError::Disconnected(e.to_string()))?;
+        match raw {
+            Some(s) => serde_json::from_str(&s)
+                .map(Some)
+                .map_err(|e| AdapterError::Serialization(e.to_string())),
+            None => Ok(None),
+        }
     }
 }
 
@@ -153,5 +202,6 @@ mod tests {
         )
         .expect("valid redis URI");
         assert_eq!(adapter.node_id(), "node-prod-1");
+        assert_eq!(adapter.csr_snapshot_key("pid-123"), "sio:stream:csr:pid-123");
     }
 }

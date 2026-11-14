@@ -102,3 +102,45 @@ async fn live_csr_pid_offset_handshake_recovery_replays_missed_frames() {
     let replayed = rx2.recv().await.unwrap();
     assert_eq!(replayed, "42[\"msg\",2]");
 }
+
+#[tokio::test]
+async fn live_on_any_and_disconnecting_hooks_observe_events_and_rooms() {
+    use std::sync::Mutex;
+
+    let io = Arc::new(SocketIo::new(4));
+    let bridge = SocketIoEngineBridge::new(Arc::clone(&io));
+    let b_ns = Arc::clone(&bridge);
+    let observed_any: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let observed_rooms: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let any_c = Arc::clone(&observed_any);
+    let rooms_c = Arc::clone(&observed_rooms);
+
+    io.ns("/", move |socket| {
+        socket.join("lobby");
+        let a = Arc::clone(&any_c);
+        b_ns.register_on_any(
+            &socket.id,
+            Arc::new(move |_sock, event, _ctx| {
+                a.lock().unwrap().push(event.to_owned());
+            }),
+        );
+        let r = Arc::clone(&rooms_c);
+        b_ns.register_disconnecting(
+            &socket.id,
+            Arc::new(move |_sock, rooms| {
+                *r.lock().unwrap() = rooms;
+            }),
+        );
+    });
+
+    let (tx, _rx) = mpsc::channel::<String>(16);
+    let sid = "FSDjX-WRwSA4zTZMALq9";
+    bridge.on_open(sid, tx);
+    bridge.on_message(sid, "0");
+    bridge.on_message(sid, "2[\"custom_ev\",{\"x\":1}]");
+    bridge.on_close(sid);
+
+    assert_eq!(*observed_any.lock().unwrap(), vec!["custom_ev".to_owned()]);
+    assert_eq!(*observed_rooms.lock().unwrap(), vec!["lobby".to_owned()]);
+    assert_eq!(io.rooms.active_room_count(), 0);
+}

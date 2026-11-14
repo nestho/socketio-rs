@@ -19,6 +19,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 pub type EventCallback = Arc<dyn Fn(SocketRef, EventContext) + Send + Sync>;
+pub type AnyEventCallback = Arc<dyn Fn(SocketRef, &str, EventContext) + Send + Sync>;
+pub type DisconnectingCallback = Arc<dyn Fn(SocketRef, Vec<String>) + Send + Sync>;
 
 #[derive(Debug, Deserialize)]
 struct ConnectAuthPayload {
@@ -48,6 +50,8 @@ struct ActiveSession {
     socket_outbound: mpsc::Sender<SharedBytes>,
     sockets_by_ns: HashMap<String, SocketRef>,
     event_handlers: Arc<RwLock<HashMap<String, EventCallback>>>,
+    on_any_handlers: Arc<RwLock<Vec<AnyEventCallback>>>,
+    disconnecting_handlers: Arc<RwLock<Vec<DisconnectingCallback>>>,
     bin_reconstructor: Mutex<BinaryAttachmentReconstructor>,
 }
 
@@ -81,11 +85,33 @@ impl SocketIoEngineBridge {
         }
     }
 
+    /// Registers a catch-all `socket.onAny((event, ...args) => ...)` listener (`S7-T05`).
+    pub fn register_on_any(&self, sid: &str, cb: AnyEventCallback) {
+        if let Ok(guard) = self.sessions.read() {
+            if let Some(sess) = guard.get(sid) {
+                if let Ok(mut list) = sess.on_any_handlers.write() {
+                    list.push(cb);
+                }
+            }
+        }
+    }
+
+    /// Registers a `socket.on("disconnecting", (rooms) => ...)` hook invoked before room teardown.
+    pub fn register_disconnecting(&self, sid: &str, cb: DisconnectingCallback) {
+        if let Ok(guard) = self.sessions.read() {
+            if let Some(sess) = guard.get(sid) {
+                if let Ok(mut list) = sess.disconnecting_handlers.write() {
+                    list.push(cb);
+                }
+            }
+        }
+    }
+
     fn dispatch_event(&self, sid: &str, pkt: SocketIoPacket, binaries: Vec<SharedBytes>) {
         let Ok((event_name, _data)) = parse_dynamic_event(pkt.payload.as_slice()) else {
             return;
         };
-        let (sock_opt, cb_opt, sock_tx_opt) = {
+        let (sock_opt, cb_opt, any_cbs, sock_tx_opt) = {
             let Ok(guard) = self.sessions.read() else {
                 return;
             };
@@ -98,10 +124,15 @@ impl SocketIoEngineBridge {
                 .read()
                 .ok()
                 .and_then(|h| h.get(&event_name).cloned());
-            (sock, cb, Some(sess.socket_outbound.clone()))
+            let any_cbs = sess
+                .on_any_handlers
+                .read()
+                .map(|l| l.clone())
+                .unwrap_or_default();
+            (sock, cb, any_cbs, Some(sess.socket_outbound.clone()))
         };
 
-        if let (Some(sock), Some(cb), Some(outbound)) = (sock_opt, cb_opt, sock_tx_opt) {
+        if let (Some(sock), Some(outbound)) = (sock_opt, sock_tx_opt) {
             let ctx = EventContext {
                 namespace: pkt.namespace,
                 ack_id: pkt.ack_id,
@@ -109,7 +140,12 @@ impl SocketIoEngineBridge {
                 binaries,
                 outbound,
             };
-            cb(sock, ctx);
+            for any_cb in any_cbs {
+                any_cb(sock.clone(), &event_name, ctx.clone());
+            }
+            if let Some(cb) = cb_opt {
+                cb(sock, ctx);
+            }
         }
     }
 }
@@ -135,6 +171,8 @@ impl EngineHandler for SocketIoEngineBridge {
             socket_outbound: sock_tx,
             sockets_by_ns: HashMap::new(),
             event_handlers: Arc::new(RwLock::new(HashMap::new())),
+            on_any_handlers: Arc::new(RwLock::new(Vec::new())),
+            disconnecting_handlers: Arc::new(RwLock::new(Vec::new())),
             bin_reconstructor: Mutex::new(BinaryAttachmentReconstructor::default()),
         };
 
@@ -273,20 +311,37 @@ impl EngineHandler for SocketIoEngineBridge {
 
     fn on_close(&self, sid: &str) {
         let joined_rooms = self.io.rooms.rooms_for_socket(sid);
-        self.io.rooms.unregister_socket(sid);
-        if let Ok(mut guard) = self.sessions.write() {
-            if let Some(sess) = guard.remove(sid) {
-                if let Some(ref rec) = self.recovery {
-                    rec.save_snapshot(SessionRecoverySnapshot {
-                        pid: sess.pid,
-                        sid: sid.to_owned(),
-                        namespace: "/".to_owned(),
-                        rooms: joined_rooms,
-                        last_offset: 0,
-                        disconnected_at_ms: epoch_ms(),
-                    });
+        let removed = self
+            .sessions
+            .write()
+            .ok()
+            .and_then(|mut guard| guard.remove(sid));
+
+        if let Some(sess) = removed {
+            if let Some(sock) = sess
+                .sockets_by_ns
+                .get("/")
+                .or_else(|| sess.sockets_by_ns.values().next())
+            {
+                if let Ok(hooks) = sess.disconnecting_handlers.read() {
+                    for hook in hooks.iter() {
+                        hook(sock.clone(), joined_rooms.clone());
+                    }
                 }
             }
+            self.io.rooms.unregister_socket(sid);
+            if let Some(ref rec) = self.recovery {
+                rec.save_snapshot(SessionRecoverySnapshot {
+                    pid: sess.pid,
+                    sid: sid.to_owned(),
+                    namespace: "/".to_owned(),
+                    rooms: joined_rooms,
+                    last_offset: 0,
+                    disconnected_at_ms: epoch_ms(),
+                });
+            }
+        } else {
+            self.io.rooms.unregister_socket(sid);
         }
     }
 }
