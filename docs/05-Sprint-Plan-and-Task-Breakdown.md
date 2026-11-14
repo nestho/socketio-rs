@@ -48,19 +48,19 @@ This sprint plan breaks down the redesign and port of [`socketio/socket.io`](htt
 ## Sprint 2: `socketio-parser` High-Speed Framing & `socketio-server` Core (Weeks 3–4)
 
 ### Group 2A: High-Speed Framing & Compression
-- [ ] **S2-T01** Integrate `sonic-rs` for zero-tape SIMD JSON packet payload parsing (with `serde_json::Value` fallback for dynamic payloads).
-- [ ] **S2-T02** Add `rmp-serde` MsgPack parser feature (`msgpack`) and binary attachment (`5` / `6` packet types) reconstruction.
-- [ ] **S2-T03** Add `permessage-deflate` support with `server_max_window_bits=10`, 1 KB payload threshold, and `verify_decompression_ratio` (100:1 max).
+- [x] **S2-T01** Integrate `sonic-rs` for zero-tape SIMD JSON packet payload parsing (with `serde_json::Value` fallback for dynamic payloads).
+- [x] **S2-T02** Add `rmp-serde` MsgPack parser feature (`msgpack`) and binary attachment (`5` / `6` packet types) reconstruction.
+- [x] **S2-T03** Add `permessage-deflate` support with `server_max_window_bits=10`, 1 KB payload threshold, and `verify_decompression_ratio` (100:1 max).
 
 ### Group 2B: Multiplexing, Tower Integration & Ergonomics
-- [ ] **S2-T04** Implement `SocketIoLayer` (`tower::Layer` / `tower::Service`) for seamless embedding in Axum, Hyper, Warp, and Salvo.
-- [ ] **S2-T05** Implement static and dynamic/regex Namespaces (`io.ns("/", ...)` and `io.ns("/admin", ...)`).
-- [ ] **S2-T06** Build ergonomic Axum-style handler extractors (`SocketRef`, `Data<T>`, `TryData<T>`, `AckSender`, `Bin`, `State<S>`) and `prelude::*` exports.
+- [x] **S2-T04** Implement `SocketIoLayer` (`tower::Layer` / `tower::Service`) for seamless embedding in Axum, Hyper, Warp, and Salvo.
+- [x] **S2-T05** Implement static and dynamic/regex Namespaces (`io.ns("/", ...)` and `io.ns("/admin", ...)`).
+- [x] **S2-T06** Build ergonomic Axum-style handler extractors (`SocketRef`, `Data<T>`, `TryData<T>`, `AckSender`, `Bin`, `State<S>`) and `prelude::*` exports.
 
 ### Group 2C: Sharded Rooms, Acks & CSWSH Security
-- [ ] **S2-T07** Connect `ShardedRoomIndex` to live socket outbound channels for O(1) `SharedBytes::clone()` broadcast fan-out (`to`, `in`, `except`, `volatile`, `local`).
-- [ ] **S2-T08** Implement `emitWithAck` and `timeout(ms)` correlation table with bounded pending-ack maps.
-- [ ] **S2-T09** Wire `validate_origin` CSWSH middleware and handshake JWT/auth hook (`io.use(...)` equivalent) into the connection pipeline.
+- [x] **S2-T07** Connect `ShardedRoomIndex` to live socket outbound channels for O(1) `SharedBytes::clone()` broadcast fan-out (`to`, `in`, `except`, `volatile`, `local`).
+- [x] **S2-T08** Implement `emitWithAck` and `timeout(ms)` correlation table with bounded pending-ack maps.
+- [x] **S2-T09** Wire `validate_origin` CSWSH middleware and handshake JWT/auth hook (`io.use(...)` equivalent) into the connection pipeline.
 
 ---
 
