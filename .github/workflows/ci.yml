@@ -57,3 +57,35 @@ jobs:
 
       - name: Run all workspace tests
         run: cargo test --workspace --verbose
+
+  node-e2e:
+    name: Official Node.js Client E2E Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev pkg-config libssl-dev
+
+      - name: Build gateway binary
+        run: cargo build -p socketio-gateway
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Node dependencies
+        working-directory: tests/node-client-e2e
+        run: npm ci || npm install
+
+      - name: Run Official Node.js Client E2E Tests
+        working-directory: tests/node-client-e2e
+        run: npm test

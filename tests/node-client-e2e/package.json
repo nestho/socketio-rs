@@ -1,0 +1,12 @@
+{
+  "name": "socketio-rs-node-compliance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test-runner.js"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.5"
+  }
+}

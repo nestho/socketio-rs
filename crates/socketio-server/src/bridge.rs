@@ -49,7 +49,7 @@ pub struct SocketIoEngineBridge {
 
 struct ActiveSession {
     pid: String,
-    raw_outbound: mpsc::Sender<String>,
+    raw_outbound: Arc<RwLock<mpsc::Sender<String>>>,
     socket_outbound: mpsc::Sender<SharedBytes>,
     sockets_by_ns: HashMap<String, SocketRef>,
     event_handlers: Arc<RwLock<HashMap<String, EventCallback>>>,
@@ -57,6 +57,16 @@ struct ActiveSession {
     on_any_outgoing_handlers: Arc<RwLock<Vec<AnyOutgoingCallback>>>,
     disconnecting_handlers: Arc<RwLock<Vec<DisconnectingCallback>>>,
     bin_reconstructor: Mutex<BinaryAttachmentReconstructor>,
+}
+
+impl ActiveSession {
+    fn send_raw(&self, msg: String) -> bool {
+        if let Ok(guard) = self.raw_outbound.read() {
+            guard.try_send(msg).is_ok()
+        } else {
+            false
+        }
+    }
 }
 
 impl SocketIoEngineBridge {
@@ -134,13 +144,13 @@ impl SocketIoEngineBridge {
 
     /// Server-initiated disconnect (`socket.disconnect(true)` / `/_disconnect` control API).
     pub fn disconnect_socket(&self, sid: &str) -> bool {
-        let raw_out = self
+        let sent = self
             .sessions
             .read()
             .ok()
-            .and_then(|g| g.get(sid).map(|s| s.raw_outbound.clone()));
-        if let Some(tx) = raw_out {
-            let _ = tx.try_send("41".to_owned());
+            .and_then(|g| g.get(sid).map(|s| s.send_raw("41".to_owned())))
+            .unwrap_or(false);
+        if sent {
             self.on_close(sid);
             true
         } else {
@@ -193,8 +203,18 @@ impl SocketIoEngineBridge {
 
 impl EngineHandler for SocketIoEngineBridge {
     fn on_open(&self, sid: &str, raw_outbound: mpsc::Sender<String>) {
+        if let Ok(guard) = self.sessions.read() {
+            if let Some(existing) = guard.get(sid) {
+                if let Ok(mut out_lock) = existing.raw_outbound.write() {
+                    *out_lock = raw_outbound;
+                }
+                return;
+            }
+        }
+
         let (sock_tx, mut sock_rx) = mpsc::channel::<SharedBytes>(256);
-        let raw_tx_clone = raw_outbound.clone();
+        let raw_tx_shared = Arc::new(RwLock::new(raw_outbound));
+        let raw_tx_fwd = Arc::clone(&raw_tx_shared);
         let on_any_outgoing_handlers: Arc<RwLock<Vec<AnyOutgoingCallback>>> =
             Arc::new(RwLock::new(Vec::new()));
         let outgoing_hooks = Arc::clone(&on_any_outgoing_handlers);
@@ -208,8 +228,12 @@ impl EngineHandler for SocketIoEngineBridge {
                     }
                 }
                 if let Ok(s) = std::str::from_utf8(pkt.as_slice()) {
-                    if raw_tx_clone.send(format!("4{s}")).await.is_err() {
-                        break;
+                    let tx_opt = raw_tx_fwd.read().ok().map(|g| g.clone());
+                    if let Some(tx) = tx_opt {
+                        if tx.send(format!("4{s}")).await.is_err() {
+                            // Yield briefly in case transport upgrade reconnects
+                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                        }
                     }
                 }
             }
@@ -217,7 +241,7 @@ impl EngineHandler for SocketIoEngineBridge {
 
         let session = ActiveSession {
             pid: format!("pid-{sid}"),
-            raw_outbound,
+            raw_outbound: raw_tx_shared,
             socket_outbound: sock_tx,
             sockets_by_ns: HashMap::new(),
             event_handlers: Arc::new(RwLock::new(HashMap::new())),
@@ -254,9 +278,7 @@ impl EngineHandler for SocketIoEngineBridge {
                     if let Ok(guard) = self.sessions.read() {
                         if let Some(sess) = guard.get(sid) {
                             let err_json = serde_json::json!({ "message": reason });
-                            let _ = sess
-                                .raw_outbound
-                                .try_send(format!("44{ns_prefix}{err_json}"));
+                            let _ = sess.send_raw(format!("44{ns_prefix}{err_json}"));
                         }
                     }
                     return;
@@ -270,7 +292,7 @@ impl EngineHandler for SocketIoEngineBridge {
                         self.recovery.as_ref()?.try_recover(pid, off, epoch_ms())
                     });
 
-                let (socket_ref, raw_out, active_pid) = {
+                let (socket_ref, raw_out_sender, active_pid) = {
                     let Ok(mut guard) = self.sessions.write() else {
                         return;
                     };
@@ -293,7 +315,7 @@ impl EngineHandler for SocketIoEngineBridge {
                         sess.socket_outbound.clone(),
                     );
                     sess.sockets_by_ns.insert(ns.clone(), sock.clone());
-                    (sock, sess.raw_outbound.clone(), sess.pid.clone())
+                    (sock, Arc::clone(&sess.raw_outbound), sess.pid.clone())
                 };
 
                 let connect_ack = if self.recovery.is_some() {
@@ -301,12 +323,16 @@ impl EngineHandler for SocketIoEngineBridge {
                 } else {
                     format!("40{ns_prefix}{{\"sid\":\"{sid}\"}}")
                 };
-                let _ = raw_out.try_send(connect_ack);
+                if let Ok(tx) = raw_out_sender.read() {
+                    let _ = tx.try_send(connect_ack);
+                }
 
                 if let Some(outcome) = recovered_outcome {
                     for frame in outcome.missed_frames {
                         if let Ok(s) = std::str::from_utf8(frame.as_slice()) {
-                            let _ = raw_out.try_send(format!("4{s}"));
+                            if let Ok(tx) = raw_out_sender.read() {
+                                let _ = tx.try_send(format!("4{s}"));
+                            }
                         }
                     }
                 }

@@ -159,7 +159,8 @@ async fn run_ws_session<S>(
         }
         None => {
             // Direct WebSocket connection: create session and emit open handshake (`0{...}`)
-            let hs: HandshakePacket = store.create_session();
+            let mut hs: HandshakePacket = store.create_session();
+            hs.upgrades.retain(|u| *u != TransportKind::WebSocket);
             let _ = out_tx.try_send(hs.to_engineio_open_frame());
             (hs.sid, UpgradeFsm::new_direct_ws())
         }

@@ -83,6 +83,7 @@ OPTIONS:
     --serve                         Start the edge HTTP/WS/Polling and control listeners
     --config <PATH>                 Path to gateway TOML config (default: gateway.toml)
     --bind <ADDR>                   Override edge bind address (e.g. 0.0.0.0:3000)
+    --control-bind <ADDR>           Override control/bridge bind address (e.g. 127.0.0.1:3001)
     --webtransport-bind <ADDR>      Enable HTTP/3 WebTransport QUIC endpoint (e.g. 0.0.0.0:3443)
     --wt-cert <PEM_PATH>            Custom TLS leaf/chain PEM certificate for WebTransport
     --wt-key <PEM_PATH>             Custom TLS private key PEM for WebTransport
@@ -195,11 +196,13 @@ async fn main() {
             .unwrap_or(&gw_cfg.server.bind_addr)
             .parse()
             .expect("valid edge bind SocketAddr");
-        let bridge_addr: SocketAddr = gw_cfg
-            .bridge
-            .broadcast_bind_addr
+        let bridge_addr: SocketAddr = args
+            .windows(2)
+            .find(|w| w[0] == "--control-bind" || w[0] == "--bridge-bind")
+            .map(|w| w[1].as_str())
+            .unwrap_or(&gw_cfg.bridge.broadcast_bind_addr)
             .parse()
-            .expect("valid bridge SocketAddr");
+            .expect("valid bridge/control SocketAddr");
 
         let store = SessionStore::new(engine_cfg.clone());
         let bridge = if gw_cfg.recovery.enabled {
